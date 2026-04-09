@@ -113,7 +113,7 @@ function normalizeBbError(error: unknown): BbBrowserError {
 }
 
 function isRetryableXiaohongshuError(error: BbBrowserError): boolean {
-  return /Chrome not connected|CDP WebSocket closed unexpectedly|Daemon request timed out|Inspected target navigated or closed|Target closed|Tab not found|Page not ready|User store not found|Search store not found|Router not found/i.test(
+  return /Chrome not connected|CDP WebSocket closed unexpectedly|Daemon request timed out|Inspected target navigated or closed|Target closed|Tab not found|Page not ready|User store not found|Search store not found|Router not found|ECONNRESET|socket hang up/i.test(
     [error.message, error.stderr, error.stdout].join("\n"),
   );
 }
@@ -166,7 +166,7 @@ async function openXiaohongshuTab(options: BbBrowserOptions): Promise<string> {
 
 async function ensureXiaohongshuWorkTab(options: BbBrowserOptions): Promise<string> {
   if (options.tabId != null) {
-    return String(options.tabId);
+    return options.tabId;
   }
 
   const tabs = await listTabs(options);

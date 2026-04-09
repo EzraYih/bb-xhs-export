@@ -6,7 +6,7 @@ import { fileURLToPath } from "node:url";
 export interface BbBrowserOptions {
   bbBrowserBin?: string;
   cwd?: string;
-  tabId?: string | number;
+  tabId?: string;
 }
 
 export class BbBrowserError extends Error {
@@ -21,9 +21,6 @@ export class BbBrowserError extends Error {
   }
 }
 
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
 
 function getBbBrowserBin(options: BbBrowserOptions): string {
   return options.bbBrowserBin || process.env.BB_BROWSER_BIN || "";
@@ -51,13 +48,14 @@ function resolveBbBrowserCommand(options: BbBrowserOptions): { command: string; 
   const configured = getBbBrowserBin(options).trim();
   if (configured) {
     const tokens = splitCommandLine(configured);
-    if (tokens.length === 0) {
+    const cmd = tokens[0];
+    if (!cmd) {
       throw new BbBrowserError("Empty bb-browser command");
     }
-    if (tokens.length === 1 && /\.m?js$/i.test(tokens[0]) && existsSync(tokens[0])) {
-      return { command: "node", prefixArgs: [tokens[0]] };
+    if (tokens.length === 1 && /\.m?js$/i.test(cmd) && existsSync(cmd)) {
+      return { command: "node", prefixArgs: [cmd] };
     }
-    return { command: tokens[0], prefixArgs: tokens.slice(1) };
+    return { command: cmd, prefixArgs: tokens.slice(1) };
   }
 
   const localDist = resolveLocalBbBrowserDist();
@@ -74,7 +72,7 @@ function resolveBbBrowserCommand(options: BbBrowserOptions): { command: string; 
 export async function runBbBrowser(args: string[], options: BbBrowserOptions = {}): Promise<string> {
   const resolved = resolveBbBrowserCommand(options);
   const commandArgs = options.tabId != null
-    ? ["--tab", String(options.tabId), ...args]
+    ? ["--tab", options.tabId, ...args]
     : args;
   return await new Promise((resolve, reject) => {
     const child = spawn(resolved.command, [...resolved.prefixArgs, ...commandArgs], {
@@ -118,38 +116,16 @@ export async function runBbBrowserJson<T>(args: string[], options: BbBrowserOpti
 }
 
 export async function runSiteJson<T>(adapter: string, adapterArgs: string[], options: BbBrowserOptions = {}): Promise<T> {
-  const maxAttempts = 3;
-  let lastError: BbBrowserError | null = null;
-
-  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
-    try {
-      const stdout = await runBbBrowser(["site", adapter, ...adapterArgs, "--json"], options);
-      let parsed: unknown;
-      try {
-        parsed = JSON.parse(stdout);
-      } catch {
-        throw new BbBrowserError(`Failed to parse bb-browser JSON output for ${adapter}`, stdout, "");
-      }
-
-      const envelope = parsed as { success?: boolean; error?: string; hint?: string; data?: T };
-      if (!envelope.success) {
-        throw new BbBrowserError(envelope.error || `Adapter ${adapter} failed`, stdout, envelope.hint || "");
-      }
-      return envelope.data as T;
-    } catch (error) {
-      const bbError = error instanceof BbBrowserError
-        ? error
-        : new BbBrowserError(error instanceof Error ? error.message : String(error));
-      lastError = bbError;
-      const retryable = /Daemon request timed out|Chrome not connected|CDP WebSocket closed unexpectedly|Inspected target navigated or closed|Target closed|Tab not found|ECONNRESET|socket hang up/i.test(
-        [bbError.message, bbError.stderr, bbError.stdout].join("\n"),
-      );
-      if (!retryable || attempt === maxAttempts) {
-        throw bbError;
-      }
-      await sleep(1000 * attempt);
-    }
+  const stdout = await runBbBrowser(["site", adapter, ...adapterArgs, "--json"], options);
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(stdout);
+  } catch {
+    throw new BbBrowserError(`Failed to parse bb-browser JSON output for ${adapter}`, stdout, "");
   }
-
-  throw lastError || new BbBrowserError(`Adapter ${adapter} failed`);
+  const envelope = parsed as { success?: boolean; error?: string; hint?: string; data?: T };
+  if (!envelope.success) {
+    throw new BbBrowserError(envelope.error || `Adapter ${adapter} failed`, stdout, envelope.hint || "");
+  }
+  return envelope.data as T;
 }

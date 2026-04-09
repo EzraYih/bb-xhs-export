@@ -80,13 +80,19 @@ export function renderNoteMarkdown(note: NoteRecord, markdownPath: string): stri
     "## Images",
     "",
     ...(note.image_urls.length > 0
-      ? note.image_urls.map((url, index) => `- [${relativeImages[index] || `image-${index + 1}`} ](${url})`.replace(" ]", "]"))
+      ? note.image_urls.map((url, index) => {
+          const label = relativeImages[index] || `image-${index + 1}`;
+          return `- [${label}](${url})`;
+        })
       : ["-"]),
     "",
     "## Videos",
     "",
     ...(note.video_urls.length > 0
-      ? note.video_urls.map((url, index) => `- [${relativeVideos[index] || `video-${index + 1}`} ](${url})`.replace(" ]", "]"))
+      ? note.video_urls.map((url, index) => {
+          const label = relativeVideos[index] || `video-${index + 1}`;
+          return `- [${label}](${url})`;
+        })
       : ["-"]),
     "",
   ].join("\n");

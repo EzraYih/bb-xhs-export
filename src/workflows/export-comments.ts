@@ -6,14 +6,16 @@ import {
   commentRepliesPage,
   type SearchPageNote,
 } from "../bb/xiaohongshu.js";
+import { runWithConcurrency, mergeNote } from "./shared.js";
 import type { BbBrowserOptions } from "../bb/run-site.js";
-import { loadCheckpoint, saveCheckpoint, type CommentsCheckpoint } from "../cache/checkpoint.js";
+import { loadCheckpoint, saveCheckpoint, type CommentsCheckpoint, type NoteCommentsPartial, loadPartial } from "../cache/checkpoint.js";
 import { readJsonIfExists, writeJson, writeText } from "../cache/store.js";
 import {
   commentsCheckpointPath,
   commentsMarkdownPath,
   createLayout,
   normalizedCommentsPath,
+  noteCommentsPartialPath,
   rawCommentsPagePath,
   rawNotePath,
   rawRepliesPagePath,
@@ -23,7 +25,7 @@ import { downloadCommentImages, downloadNoteMedia } from "../media/download.js";
 import { renderCommentsIndex, renderCommentsMarkdown } from "../render/comments-markdown.js";
 import { createManifest, type ExportFailure } from "../schema/manifest.js";
 import { normalizeCommentRecord, type CommentRecord } from "../schema/comment.js";
-import { normalizeNoteRecord, type NoteRecord } from "../schema/note.js";
+import type { NoteRecord } from "../schema/note.js";
 import { TerminalProgress } from "../ui/progress.js";
 
 export interface ExportCommentsOptions extends BbBrowserOptions {
@@ -48,43 +50,6 @@ interface CommentCollectionProgress {
   currentCommentId: string | null;
 }
 
-async function runWithConcurrency<T, R>(items: T[], limit: number, worker: (item: T) => Promise<R>): Promise<R[]> {
-  if (items.length === 0) return [];
-  const results = new Array<R>(items.length);
-  let index = 0;
-
-  async function runner(): Promise<void> {
-    while (index < items.length) {
-      const current = index;
-      index += 1;
-      results[current] = await worker(items[current]);
-    }
-  }
-
-  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, () => runner()));
-  return results;
-}
-
-function mergeNote(summary: SearchPageNote, detail: Record<string, unknown>): NoteRecord {
-  return normalizeNoteRecord({
-    ...summary,
-    ...detail,
-    cover_url: detail.cover_url ?? summary.cover_url,
-    avatar_url: detail.avatar_url ?? summary.avatar_url,
-    author_name: detail.author_name ?? summary.author_name,
-    author_user_id: detail.author_user_id ?? summary.author_user_id,
-    author_profile_url: detail.author_profile_url ?? summary.author_profile_url,
-    liked_count: detail.liked_count ?? summary.liked_count,
-    comment_count: detail.comment_count ?? summary.comment_count,
-    collect_count: detail.collect_count ?? summary.collect_count,
-    share_count: detail.share_count ?? summary.share_count,
-    published_at: detail.published_at ?? summary.published_at,
-    image_files: [],
-    video_files: [],
-    cover_file: null,
-    avatar_file: null,
-  });
-}
 
 async function collectAllComments(
   note: NoteRecord,
@@ -93,10 +58,13 @@ async function collectAllComments(
   failures: ExportFailure[],
   onProgress?: (progress: CommentCollectionProgress) => void,
 ): Promise<CommentRecord[]> {
-  const collected: CommentRecord[] = [];
-  const seenCommentIds = new Set<string>();
-  let cursor: string | null = null;
-  let commentsPageIndex = 1;
+  const partialPath = noteCommentsPartialPath(layout, note.note_id);
+  const partial = options.resume ? loadPartial<NoteCommentsPartial>(partialPath) : undefined;
+
+  const collected: CommentRecord[] = partial ? (partial.collected as CommentRecord[]) : [];
+  const seenCommentIds = new Set<string>(partial ? partial.seen_comment_ids : []);
+  let cursor: string | null = partial?.next_cursor ?? null;
+  let commentsPageIndex = partial?.comments_page_index ?? 1;
   let replyPageCount = 0;
 
   while (true) {
@@ -175,11 +143,24 @@ async function collectAllComments(
       currentCommentId: null,
     });
 
-    if (!pageResult.has_more || !pageResult.cursor_out || pageResult.cursor_out === cursor) {
-      break;
-    }
-    cursor = pageResult.cursor_out;
-    commentsPageIndex += 1;
+    const nextCursor = pageResult.has_more && pageResult.cursor_out && pageResult.cursor_out !== cursor
+      ? pageResult.cursor_out
+      : null;
+
+    // Persist a per-page checkpoint so a crash within this note can resume
+    // from the last completed top-level comments page.
+    const nextPageIndex = nextCursor ? commentsPageIndex + 1 : commentsPageIndex;
+    saveCheckpoint(partialPath, {
+      note_id: note.note_id,
+      next_cursor: nextCursor,
+      comments_page_index: nextPageIndex,
+      collected,
+      seen_comment_ids: [...seenCommentIds],
+    } satisfies NoteCommentsPartial);
+
+    if (!nextCursor) break;
+    cursor = nextCursor;
+    commentsPageIndex = nextPageIndex;
   }
 
   return collected;
@@ -189,7 +170,7 @@ export async function exportCommentsWorkflow(options: ExportCommentsOptions): Pr
   const progress = new TerminalProgress();
   const layout = createLayout(options.outputDir);
   const checkpointPath = commentsCheckpointPath(layout);
-  const checkpoint = options.resume ? loadCheckpoint<CommentsCheckpoint>(checkpointPath) : undefined;
+  const checkpoint = options.resume ? loadCheckpoint<CommentsCheckpoint>(checkpointPath, "comments") : undefined;
   const manifest = createManifest("comments", options.keyword, options.topNotes);
   const existingNotes = options.resume ? readJsonIfExists<NoteRecord[]>(layout.normalizedNotesPath) || [] : [];
   const notesById = new Map(existingNotes.map((note) => [note.note_id, note]));

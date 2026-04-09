@@ -17,7 +17,7 @@ function parseFlags(args: string[]): Record<string, FlagValue> {
   const flags: Record<string, FlagValue> = {};
   for (let index = 0; index < args.length; index += 1) {
     const current = args[index];
-    if (!current.startsWith("--")) continue;
+    if (!current || !current.startsWith("--")) continue;
     const key = current.slice(2);
     const next = args[index + 1];
     if (!next || next.startsWith("--")) {
@@ -48,7 +48,7 @@ function parseNumber(flags: Record<string, FlagValue>, key: string): number {
 }
 
 function printHelp(): void {
-  log([
+  console.log([
     "bb-xhs-export",
     "",
     "用法:",

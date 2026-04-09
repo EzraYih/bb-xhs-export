@@ -1,5 +1,5 @@
 import { join, resolve } from "node:path";
-import { ensureDir } from "../cache/store.js";
+
 
 export interface ExportLayout {
   baseDir: string;
@@ -57,29 +57,6 @@ export function createLayout(outputDir: string): ExportLayout {
     checkpointsDir: join(baseDir, "checkpoints"),
   };
 
-  for (const dir of [
-    layout.baseDir,
-    layout.rawDir,
-    layout.rawSearchPagesDir,
-    layout.rawNotesDir,
-    layout.rawCommentsDir,
-    layout.rawRepliesDir,
-    layout.normalizedDir,
-    layout.normalizedCommentsDir,
-    layout.mediaDir,
-    layout.coversDir,
-    layout.avatarsDir,
-    layout.imagesDir,
-    layout.videosDir,
-    layout.commentImagesDir,
-    layout.markdownDir,
-    layout.markdownNotesDir,
-    layout.markdownCommentsDir,
-    layout.checkpointsDir,
-  ]) {
-    ensureDir(dir);
-  }
-
   return layout;
 }
 
@@ -119,4 +96,8 @@ export function notesCheckpointPath(layout: ExportLayout): string {
 
 export function commentsCheckpointPath(layout: ExportLayout): string {
   return join(layout.checkpointsDir, "comments.json");
+}
+
+export function noteCommentsPartialPath(layout: ExportLayout, noteId: string): string {
+  return join(layout.checkpointsDir, `comments-partial-${safePart(noteId)}.json`);
 }

@@ -1,5 +1,6 @@
 import { relative } from "node:path";
 import { searchPage, noteDetail, type SearchPageNote } from "../bb/xiaohongshu.js";
+import { runWithConcurrency, mergeNote } from "./shared.js";
 import type { BbBrowserOptions } from "../bb/run-site.js";
 import { loadCheckpoint, saveCheckpoint, type NotesCheckpoint } from "../cache/checkpoint.js";
 import { readJsonIfExists, writeJson, writeText } from "../cache/store.js";
@@ -13,7 +14,7 @@ import {
 import { downloadNoteMedia } from "../media/download.js";
 import { renderNoteMarkdown, renderNotesIndex } from "../render/notes-markdown.js";
 import { createManifest } from "../schema/manifest.js";
-import { normalizeNoteRecord, type NoteRecord } from "../schema/note.js";
+import type { NoteRecord } from "../schema/note.js";
 import { TerminalProgress } from "../ui/progress.js";
 
 export interface ExportNotesOptions extends BbBrowserOptions {
@@ -29,49 +30,12 @@ export interface ExportNotesResult {
   manifestPath: string;
 }
 
-async function runWithConcurrency<T, R>(items: T[], limit: number, worker: (item: T) => Promise<R>): Promise<R[]> {
-  if (items.length === 0) return [];
-  const results = new Array<R>(items.length);
-  let index = 0;
-
-  async function runner(): Promise<void> {
-    while (index < items.length) {
-      const current = index;
-      index += 1;
-      results[current] = await worker(items[current]);
-    }
-  }
-
-  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, () => runner()));
-  return results;
-}
-
-function mergeNote(summary: SearchPageNote, detail: Record<string, unknown>): NoteRecord {
-  return normalizeNoteRecord({
-    ...summary,
-    ...detail,
-    cover_url: detail.cover_url ?? summary.cover_url,
-    avatar_url: detail.avatar_url ?? summary.avatar_url,
-    author_name: detail.author_name ?? summary.author_name,
-    author_user_id: detail.author_user_id ?? summary.author_user_id,
-    author_profile_url: detail.author_profile_url ?? summary.author_profile_url,
-    liked_count: detail.liked_count ?? summary.liked_count,
-    comment_count: detail.comment_count ?? summary.comment_count,
-    collect_count: detail.collect_count ?? summary.collect_count,
-    share_count: detail.share_count ?? summary.share_count,
-    published_at: detail.published_at ?? summary.published_at,
-    image_files: [],
-    video_files: [],
-    cover_file: null,
-    avatar_file: null,
-  });
-}
 
 export async function exportNotesWorkflow(options: ExportNotesOptions): Promise<ExportNotesResult> {
   const progress = new TerminalProgress();
   const layout = createLayout(options.outputDir);
   const checkpointPath = notesCheckpointPath(layout);
-  const checkpoint = options.resume ? loadCheckpoint<NotesCheckpoint>(checkpointPath) : undefined;
+  const checkpoint = options.resume ? loadCheckpoint<NotesCheckpoint>(checkpointPath, "notes") : undefined;
   const manifest = createManifest("notes", options.keyword, options.top);
   const existingNotes = options.resume ? readJsonIfExists<NoteRecord[]>(layout.normalizedNotesPath) || [] : [];
   const notesById = new Map(existingNotes.map((note) => [note.note_id, note]));

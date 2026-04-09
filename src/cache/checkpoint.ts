@@ -22,10 +22,34 @@ export interface CommentsCheckpoint {
   completed: boolean;
 }
 
-export function loadCheckpoint<T>(path: string): T | undefined {
-  return readJsonIfExists<T>(path);
+export interface NoteCommentsPartial {
+  note_id: string;
+  next_cursor: string | null;
+  comments_page_index: number;
+  collected: unknown[];   // typed as CommentRecord[] at call site
+  seen_comment_ids: string[];
+}
+
+type WorkflowCheckpoint = NotesCheckpoint | CommentsCheckpoint;
+
+/**
+ * Loads a workflow checkpoint and validates that the stored `workflow` field
+ * matches the expected value. If it does not match (e.g. the user reuses
+ * --output-dir between a `notes` and a `comments` run), the stale checkpoint
+ * is discarded and undefined is returned, so the workflow starts fresh.
+ */
+export function loadCheckpoint<T extends WorkflowCheckpoint>(
+  path: string,
+  workflow: T["workflow"],
+): T | undefined {
+  const data = readJsonIfExists<T>(path);
+  if (!data || data.workflow !== workflow) return undefined;
+  return data;
 }
 
 export function saveCheckpoint(path: string, checkpoint: unknown): void {
   writeJson(path, checkpoint);
 }
+
+// Re-export for callers that load non-workflow partials (e.g. NoteCommentsPartial).
+export { readJsonIfExists as loadPartial } from "./store.js";

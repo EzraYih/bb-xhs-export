@@ -1,4 +1,5 @@
 import { stdout } from "node:process";
+import readline from "node:readline";
 
 export interface ProgressSnapshot {
   label: string;
@@ -11,12 +12,12 @@ function clamp(value: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, value));
 }
 
-function padLine(line: string): string {
+function truncateLine(line: string): string {
   const columns = stdout.columns || 120;
-  if (line.length >= columns) {
+  if (line.length > columns) {
     return `${line.slice(0, Math.max(0, columns - 3))}...`;
   }
-  return line.padEnd(columns, " ");
+  return line;
 }
 
 export class TerminalProgress {
@@ -24,10 +25,12 @@ export class TerminalProgress {
   private lastLine = "";
   private readonly isInteractive = Boolean(stdout.isTTY);
   private readonly intervalMs: number;
+  private readonly nonTtyIntervalMs: number;
   private tick = 0;
 
-  constructor(intervalMs = 120) {
+  constructor(intervalMs = 120, nonTtyIntervalMs = 5000) {
     this.intervalMs = intervalMs;
+    this.nonTtyIntervalMs = nonTtyIntervalMs;
   }
 
   update(snapshot: ProgressSnapshot): void {
@@ -49,13 +52,15 @@ export class TerminalProgress {
       if (now - this.lastRenderAt < this.intervalMs && line === this.lastLine) {
         return;
       }
-      stdout.write(`\r${padLine(line)}`);
+      readline.clearLine(stdout, 0);
+      readline.cursorTo(stdout, 0);
+      stdout.write(truncateLine(line));
       this.lastLine = line;
       this.lastRenderAt = now;
       return;
     }
 
-    if (line !== this.lastLine && now - this.lastRenderAt >= Math.max(this.intervalMs, 1000)) {
+    if (line !== this.lastLine && now - this.lastRenderAt >= this.nonTtyIntervalMs) {
       console.log(line);
       this.lastLine = line;
       this.lastRenderAt = now;
@@ -65,7 +70,9 @@ export class TerminalProgress {
   finish(message?: string): void {
     if (this.isInteractive) {
       if (this.lastLine) {
-        stdout.write(`\r${padLine(this.lastLine)}\n`);
+        readline.clearLine(stdout, 0);
+        readline.cursorTo(stdout, 0);
+        stdout.write(`${truncateLine(this.lastLine)}\n`);
       }
       if (message) {
         console.log(message);
