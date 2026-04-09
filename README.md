@@ -99,17 +99,29 @@ node dist/cli.js notes --keyword outfit --top 10 --output-dir ./exports/notes --
 本项目以高内聚、低耦合的分层架构进行组织，确保后续抓取/导出的扩展性：
 
 ```text
-bb-xhs-export/
-├── src/
-│   ├── bb/           # 底层驱动：负责与 bb-browser 进程通信，封装浏览器原语的执行与单层重试机制
-│   ├── cache/        # 持久化：文件系统 IO 工具与 checkpoint 架构，实现断点续传与粗细粒度恢复
-│   ├── fs/           # 布局：导出产物生命周期路径的统一映射（Raw -> Normalized -> Markdown）
-│   ├── media/        # 媒体：负责外部资源拉取管道逻辑
-│   ├── render/       # 展示：基于抓取到的标准数据源将笔记内容渲染为 Markdown
-│   ├── schema/       # 数据：统一定义并清洗原始数据至纯净的数据模型（NoteRecord, CommentRecord）
-│   ├── ui/           # 界面：终端（TTY 与非 TTY）输出和富进度条控制台交互组件
-│   ├── workflows/    # 服务：顶层爬取业务串联封装（并行控制、任务拆分分发）
-│   └── cli.ts        # 入口：外围 CLI 参数解析分发
+src/
+├── cli.ts                      # CLI 入口，参数解析
+├── bb/
+│   ├── run-site.ts             # 底层 spawn bb-browser 进程，含重试
+│   ├── xiaohongshu.ts          # XHS 适配器调用包装，Tab 管理/重试
+│   └── fetch-binary.ts         # 二进制下载（目前未使用）
+├── workflows/
+│   ├── export-notes.ts         # 笔记导出主流程
+│   └── export-comments.ts      # 评论导出主流程
+├── schema/
+│   ├── note.ts                 # NoteRecord 类型 + 规范化
+│   ├── comment.ts              # CommentRecord 类型 + 规范化
+│   └── manifest.ts             # ExportManifest 类型 + 工厂
+├── fs/layout.ts                # 目录/路径布局，ensureDir
+├── cache/
+│   ├── store.ts                # JSON/文本读写工具
+│   └── checkpoint.ts           # 检查点加载保存（包装 store）
+├── render/
+│   ├── notes-markdown.ts       # 笔记 Markdown 渲染
+│   └── comments-markdown.ts    # 评论 Markdown 渲染
+├── ui/progress.ts              # 终端进度条
+└── media/download.ts           # 媒体下载（当前为占位 stub）
+
 ```
 
 ## 命令
