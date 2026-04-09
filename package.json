@@ -1,0 +1,23 @@
+{
+  "name": "bb-xhs-export",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "bin": {
+    "bb-xhs-export": "./dist/cli.js"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "dev": "tsx src/cli.ts",
+    "notes": "tsx src/cli.ts notes",
+    "comments": "tsx src/cli.ts comments"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "devDependencies": {
+    "@types/node": "^22.14.1",
+    "tsx": "^4.19.3",
+    "typescript": "^5.8.3"
+  }
+}
