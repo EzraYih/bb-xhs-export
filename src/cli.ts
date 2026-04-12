@@ -47,12 +47,27 @@ function parseNumber(flags: Record<string, FlagValue>, key: string): number {
   return parsed;
 }
 
+function parseOptionalNonNegativeNumber(flags: Record<string, FlagValue>, key: string): number | undefined {
+  const value = flags[key];
+  if (value === undefined || value === false) {
+    return undefined;
+  }
+  if (typeof value !== "string" || !value.trim()) {
+    throw new Error(`参数 --${key} 必须是非负整数`);
+  }
+  const parsed = Number.parseInt(value, 10);
+  if (!Number.isFinite(parsed) || parsed < 0) {
+    throw new Error(`参数 --${key} 必须是非负整数，当前值: ${value}`);
+  }
+  return parsed;
+}
+
 function printHelp(): void {
   console.log([
     "bb-xhs-export",
     "",
     "用法:",
-    "  node dist/cli.js notes --keyword <q> --top <n> [--output-dir <dir>] [--sort <sort>] [--resume] [--bb-browser-bin <path>]",
+    "  node dist/cli.js notes --keyword <q> --top <n> [--output-dir <dir>] [--sort <sort>] [--resume] [--bb-browser-bin <path>] [--note-delay-min-ms <n>] [--note-delay-max-ms <n>]",
     "  node dist/cli.js comments --keyword <q> --top-notes <n> [--output-dir <dir>] [--sort <sort>] [--resume] [--bb-browser-bin <path>]",
   ].join("\n"));
 }
@@ -73,7 +88,12 @@ async function main(): Promise<void> {
   if (command === "notes") {
     const keyword = requireString(flags, "keyword");
     const top = parseNumber(flags, "top");
-    log(`开始导出笔记，关键词=${keyword}，目标数量=${top}`);
+    const noteDetailDelayMinMs = parseOptionalNonNegativeNumber(flags, "note-delay-min-ms") ?? 1000;
+    const noteDetailDelayMaxMs = parseOptionalNonNegativeNumber(flags, "note-delay-max-ms") ?? 5000;
+    if (noteDetailDelayMaxMs < noteDetailDelayMinMs) {
+      throw new Error(`参数 --note-delay-max-ms 不能小于 --note-delay-min-ms，当前值: ${noteDetailDelayMaxMs} < ${noteDetailDelayMinMs}`);
+    }
+    log(`开始导出笔记，关键词=${keyword}，目标数量=${top}，详情间隔=${noteDetailDelayMinMs}~${noteDetailDelayMaxMs}ms`);
     const result = await exportNotesWorkflow({
       keyword,
       top,
@@ -81,6 +101,8 @@ async function main(): Promise<void> {
       resume,
       bbBrowserBin,
       sort,
+      noteDetailDelayMinMs,
+      noteDetailDelayMaxMs,
     });
     log(`笔记导出完成，共 ${result.noteCount} 篇`);
     log(`输出目录: ${result.outputDir}`);

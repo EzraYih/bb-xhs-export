@@ -23,6 +23,8 @@ export interface ExportNotesOptions extends BbBrowserOptions {
   outputDir: string;
   resume: boolean;
   sort?: "likes" | "comments" | "latest" | "general" | "collects";
+  noteDetailDelayMinMs?: number;
+  noteDetailDelayMaxMs?: number;
 }
 
 export interface ExportNotesResult {
@@ -31,6 +33,12 @@ export interface ExportNotesResult {
   manifestPath: string;
 }
 
+const DEFAULT_NOTE_DETAIL_DELAY_MIN_MS = 1000;
+const DEFAULT_NOTE_DETAIL_DELAY_MAX_MS = 5000;
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
 
 export async function exportNotesWorkflow(options: ExportNotesOptions): Promise<ExportNotesResult> {
   const progress = new TerminalProgress();
@@ -45,6 +53,15 @@ export async function exportNotesWorkflow(options: ExportNotesOptions): Promise<
   const failedNotes = { ...(checkpoint?.failed_notes || {}) };
   let page = checkpoint?.next_search_page ?? 1;
   let hasMore = true;
+  let noteDetailAttempts = 0;
+  const noteDetailDelayMinMs = options.noteDetailDelayMinMs ?? DEFAULT_NOTE_DETAIL_DELAY_MIN_MS;
+  const noteDetailDelayMaxMs = options.noteDetailDelayMaxMs ?? DEFAULT_NOTE_DETAIL_DELAY_MAX_MS;
+
+  function randomDetailDelayMs(): number {
+    return Math.floor(
+      noteDetailDelayMinMs + Math.random() * (noteDetailDelayMaxMs - noteDetailDelayMinMs + 1),
+    );
+  }
 
   function renderSelectionProgress(label: string, detail?: string): void {
     progress.update({
@@ -58,6 +75,19 @@ export async function exportNotesWorkflow(options: ExportNotesOptions): Promise<
   async function processSummary(summary: SearchPageNote): Promise<void> {
     if (notesById.size >= options.top) return;
     if (notesById.has(summary.note_id) || completedNoteIds.has(summary.note_id)) return;
+
+    if (noteDetailAttempts > 0 && noteDetailDelayMaxMs > 0) {
+      const delayMs = randomDetailDelayMs();
+      progress.update({
+        label: "等待下一条笔记",
+        current: Math.min(notesById.size, options.top),
+        total: Math.max(options.top, 1),
+        detail: `搜索页=${page} 笔记=${summary.note_id} 等待=${(delayMs / 1000).toFixed(1)}秒`,
+      });
+      await sleep(delayMs);
+    }
+
+    noteDetailAttempts += 1;
     renderSelectionProgress("抓取笔记详情", `搜索页=${page} 笔记=${summary.note_id}`);
     try {
       const detail = await noteDetail(summary.note_id, summary.xsec_token, options);

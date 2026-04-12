@@ -83,7 +83,7 @@ bb-browser site xiaohongshu/me
 
 ```bash
 cd bb-xhs-export
-node dist/cli.js notes --keyword <q> --top <n> [--output-dir <dir>] [--sort <sort>] [--resume] [--bb-browser-bin <path>]
+node dist/cli.js notes --keyword <q> --top <n> [--output-dir <dir>] [--sort <sort>] [--resume] [--bb-browser-bin <path>] [--note-delay-min-ms <n>] [--note-delay-max-ms <n>]
 node dist/cli.js comments --keyword <q> --top-notes <n> [--output-dir <dir>] [--sort <sort>] [--resume] [--bb-browser-bin <path>]
 ```
 
@@ -96,12 +96,19 @@ node dist/cli.js comments --keyword <q> --top-notes <n> [--output-dir <dir>] [--
 | `--output-dir` | 两者皆可 | 可选：保存原始数据、格式化 JSON、Markdown 和检查点的根路径。默认存放在当前命令执行目录下的 `./export` 目录。 |
 | `--resume` | 两者皆可 | 可选：从之前意外中断时的检查点数据恢复流程续传。 |
 | `--bb-browser-bin` | 两者皆可 | 可选：当你未按照同级存放的推荐模式时，显式指定你的 `bb-browser` 实际执行命令文件。 |
+| `--note-delay-min-ms` | `notes` | 可选：逐条读取笔记详情前的最小随机等待时间（毫秒），默认 `1000`。传 `0` 可关闭最小等待。 |
+| `--note-delay-max-ms` | `notes` | 可选：逐条读取笔记详情前的最大随机等待时间（毫秒），默认 `5000`。必须大于等于 `--note-delay-min-ms`。 |
 
 ### 运行示例
 
 导出 10 篇跟「穿搭」相关的热门笔记：
 ```bash
 node dist/cli.js notes --keyword outfit --top 10 --output-dir ./exports/notes/outfit
+```
+
+导出 10 篇笔记，并将每条详情抓取间隔配置为 `2~6` 秒：
+```bash
+node dist/cli.js notes --keyword outfit --top 10 --output-dir ./exports/notes/outfit --note-delay-min-ms 2000 --note-delay-max-ms 6000
 ```
 
 导出 5 篇穿搭笔记及其下方的**所有相关评论记录**：
