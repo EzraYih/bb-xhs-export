@@ -34,6 +34,8 @@ export interface ExportCommentsOptions extends BbBrowserOptions {
   outputDir: string;
   resume: boolean;
   sort?: "likes" | "comments" | "latest" | "general" | "collects";
+  commentDelayMinMs?: number;
+  commentDelayMaxMs?: number;
 }
 
 export interface ExportCommentsResult {
@@ -44,11 +46,20 @@ export interface ExportCommentsResult {
 }
 
 interface CommentCollectionProgress {
-  stage: "top-comments" | "replies";
+  stage: "top-comments" | "replies" | "delay";
   collectedCount: number;
   commentsPageIndex: number;
   replyPageCount: number;
   currentCommentId: string | null;
+  delayMs?: number;
+  delayTarget?: "top-comments" | "replies";
+}
+
+const DEFAULT_COMMENT_DELAY_MIN_MS = 500;
+const DEFAULT_COMMENT_DELAY_MAX_MS = 2000;
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 
@@ -67,8 +78,39 @@ async function collectAllComments(
   let cursor: string | null = partial?.next_cursor ?? null;
   let commentsPageIndex = partial?.comments_page_index ?? 1;
   let replyPageCount = 0;
+  let commentRequestAttempts = 0;
+  const commentDelayMinMs = options.commentDelayMinMs ?? DEFAULT_COMMENT_DELAY_MIN_MS;
+  const commentDelayMaxMs = options.commentDelayMaxMs ?? DEFAULT_COMMENT_DELAY_MAX_MS;
+
+  function randomCommentDelayMs(): number {
+    return Math.floor(
+      commentDelayMinMs + Math.random() * (commentDelayMaxMs - commentDelayMinMs + 1),
+    );
+  }
+
+  async function waitBeforeCommentRequest(
+    target: "top-comments" | "replies",
+    commentId: string | null,
+  ): Promise<void> {
+    if (commentRequestAttempts <= 0 || commentDelayMaxMs <= 0) {
+      return;
+    }
+    const delayMs = randomCommentDelayMs();
+    onProgress?.({
+      stage: "delay",
+      collectedCount: collected.length,
+      commentsPageIndex,
+      replyPageCount,
+      currentCommentId: commentId,
+      delayMs,
+      delayTarget: target,
+    });
+    await sleep(delayMs);
+  }
 
   while (true) {
+    await waitBeforeCommentRequest("top-comments", null);
+    commentRequestAttempts += 1;
     const pageResult = await commentsPage(note.note_id, note.xsec_token, cursor, 50, options);
     writeJson(rawCommentsPagePath(layout, note.note_id, commentsPageIndex, cursor), pageResult);
 
@@ -91,6 +133,8 @@ async function collectAllComments(
       let repliesPageIndex = 1;
       while (true) {
         try {
+          await waitBeforeCommentRequest("replies", topComment.comment_id);
+          commentRequestAttempts += 1;
           const replyResult = await commentRepliesPage(
             note.note_id,
             topComment.comment_id,
@@ -190,6 +234,41 @@ export async function exportCommentsWorkflow(options: ExportCommentsOptions): Pr
     });
   }
 
+  function renderCommentProgress(noteOrder: number, noteTotal: number, detail: string): void {
+    progress.update({
+      label: "抓取评论",
+      current: Math.min(noteOrder, Math.max(noteTotal, 1)),
+      total: Math.max(noteTotal, 1),
+      detail,
+    });
+  }
+
+  function buildCommentProgressDetail(
+    noteOrder: number,
+    noteTotal: number,
+    state: {
+      collectedCount?: number;
+      commentsPageIndex?: number;
+      replyPageCount?: number;
+      delayMs?: number;
+      delayTarget?: "top-comments" | "replies";
+      status?: string;
+      commentCount?: number;
+    },
+  ): string {
+    const parts = [`笔记=${noteOrder}/${noteTotal}`];
+    if (state.status) parts.push(state.status);
+    if (typeof state.collectedCount === "number") parts.push(`已收集=${state.collectedCount}`);
+    if (typeof state.commentsPageIndex === "number") parts.push(`一级页=${state.commentsPageIndex}`);
+    if (typeof state.replyPageCount === "number") parts.push(`回复页=${state.replyPageCount}`);
+    if (typeof state.commentCount === "number") parts.push(`评论=${state.commentCount}`);
+    if (typeof state.delayMs === "number") {
+      const delayLabel = state.delayTarget === "replies" ? "等回复" : "等评论";
+      parts.push(`${delayLabel}=${(state.delayMs / 1000).toFixed(1)}秒`);
+    }
+    return parts.join(" ");
+  }
+
   function persistCheckpoint(completed: boolean): void {
     const nextCheckpoint: CommentsCheckpoint = {
       workflow: "comments",
@@ -281,22 +360,38 @@ export async function exportCommentsWorkflow(options: ExportCommentsOptions): Pr
       async (note) => {
         const failures: ExportFailure[] = [];
         const noteOrder = note.rank ?? 0;
-        progress.update({
-          label: "抓取评论",
-          current: completedNoteIds.size,
-          total: Math.max(selectedNotes.length, 1),
-          detail: `笔记=${noteOrder}/${selectedNotes.length} ID=${note.note_id} 开始`,
-        });
+        renderCommentProgress(
+          noteOrder,
+          selectedNotes.length,
+          buildCommentProgressDetail(noteOrder, selectedNotes.length, { status: "开始" }),
+        );
         const comments = await collectAllComments(note, layout, options, failures, (state) => {
-          const stageDetail = state.stage === "replies"
-            ? `笔记=${noteOrder}/${selectedNotes.length} ID=${note.note_id} 已收集评论=${state.collectedCount} 一级页数=${state.commentsPageIndex} 回复页数=${state.replyPageCount} 当前一级评论=${state.currentCommentId || ""}`
-            : `笔记=${noteOrder}/${selectedNotes.length} ID=${note.note_id} 已收集评论=${state.collectedCount} 一级页数=${state.commentsPageIndex} 回复页数=${state.replyPageCount}`;
-          progress.update({
-            label: "抓取评论",
-            current: completedNoteIds.size,
-            total: Math.max(selectedNotes.length, 1),
-            detail: stageDetail,
-          });
+          if (state.stage === "delay") {
+            renderCommentProgress(
+              noteOrder,
+              selectedNotes.length,
+              buildCommentProgressDetail(noteOrder, selectedNotes.length, {
+                status: "等待",
+                collectedCount: state.collectedCount,
+                commentsPageIndex: state.commentsPageIndex,
+                replyPageCount: state.replyPageCount,
+                delayMs: state.delayMs,
+                delayTarget: state.delayTarget,
+              }),
+            );
+            return;
+          }
+
+          renderCommentProgress(
+            noteOrder,
+            selectedNotes.length,
+            buildCommentProgressDetail(noteOrder, selectedNotes.length, {
+              status: state.stage === "replies" ? "抓回复" : "抓评论",
+              collectedCount: state.collectedCount,
+              commentsPageIndex: state.commentsPageIndex,
+              replyPageCount: state.replyPageCount,
+            }),
+          );
         });
         const commentsWithMedia = await downloadCommentImages(note.note_id, comments, layout, options);
         writeJson(normalizedCommentsPath(layout, note.note_id), commentsWithMedia);
@@ -304,12 +399,14 @@ export async function exportCommentsWorkflow(options: ExportCommentsOptions): Pr
         writeText(markdownPath, renderCommentsMarkdown(note, commentsWithMedia, markdownPath));
         completedNoteIds.add(note.note_id);
         persistCheckpoint(false);
-        progress.update({
-          label: "抓取评论",
-          current: completedNoteIds.size,
-          total: Math.max(selectedNotes.length, 1),
-          detail: `笔记=${noteOrder}/${selectedNotes.length} ID=${note.note_id} 完成 评论=${commentsWithMedia.length}`,
-        });
+        renderCommentProgress(
+          noteOrder,
+          selectedNotes.length,
+          buildCommentProgressDetail(noteOrder, selectedNotes.length, {
+            status: "完成",
+            commentCount: commentsWithMedia.length,
+          }),
+        );
         return {
           note,
           comments: commentsWithMedia,

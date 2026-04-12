@@ -68,7 +68,7 @@ function printHelp(): void {
     "",
     "用法:",
     "  node dist/cli.js notes --keyword <q> --top <n> [--output-dir <dir>] [--sort <sort>] [--resume] [--bb-browser-bin <path>] [--note-delay-min-ms <n>] [--note-delay-max-ms <n>]",
-    "  node dist/cli.js comments --keyword <q> --top-notes <n> [--output-dir <dir>] [--sort <sort>] [--resume] [--bb-browser-bin <path>]",
+    "  node dist/cli.js comments --keyword <q> --top-notes <n> [--output-dir <dir>] [--sort <sort>] [--resume] [--bb-browser-bin <path>] [--comment-delay-min-ms <n>] [--comment-delay-max-ms <n>]",
   ].join("\n"));
 }
 
@@ -113,7 +113,12 @@ async function main(): Promise<void> {
   if (command === "comments") {
     const keyword = requireString(flags, "keyword");
     const topNotes = parseNumber(flags, "top-notes");
-    log(`开始导出评论，关键词=${keyword}，目标笔记数=${topNotes}`);
+    const commentDelayMinMs = parseOptionalNonNegativeNumber(flags, "comment-delay-min-ms") ?? 500;
+    const commentDelayMaxMs = parseOptionalNonNegativeNumber(flags, "comment-delay-max-ms") ?? 2000;
+    if (commentDelayMaxMs < commentDelayMinMs) {
+      throw new Error(`参数 --comment-delay-max-ms 不能小于 --comment-delay-min-ms，当前值: ${commentDelayMaxMs} < ${commentDelayMinMs}`);
+    }
+    log(`开始导出评论，关键词=${keyword}，目标笔记数=${topNotes}，评论间隔=${commentDelayMinMs}~${commentDelayMaxMs}ms`);
     const result = await exportCommentsWorkflow({
       keyword,
       topNotes,
@@ -121,6 +126,8 @@ async function main(): Promise<void> {
       resume,
       bbBrowserBin,
       sort,
+      commentDelayMinMs,
+      commentDelayMaxMs,
     });
     log(`评论导出完成，笔记 ${result.noteCount} 篇，评论 ${result.commentCount} 条`);
     log(`输出目录: ${result.outputDir}`);

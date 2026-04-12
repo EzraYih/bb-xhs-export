@@ -12,10 +12,34 @@ function clamp(value: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, value));
 }
 
+function charDisplayWidth(char: string): number {
+  const codePoint = char.codePointAt(0) ?? 0;
+  return codePoint <= 0xff ? 1 : 2;
+}
+
+function lineDisplayWidth(line: string): number {
+  let width = 0;
+  for (const char of line) {
+    width += charDisplayWidth(char);
+  }
+  return width;
+}
+
 function truncateLine(line: string): string {
   const columns = stdout.columns || 120;
-  if (line.length > columns) {
-    return `${line.slice(0, Math.max(0, columns - 3))}...`;
+  if (lineDisplayWidth(line) > columns) {
+    const targetWidth = Math.max(0, columns - 3);
+    let width = 0;
+    let result = "";
+    for (const char of line) {
+      const charWidth = charDisplayWidth(char);
+      if (width + charWidth > targetWidth) {
+        break;
+      }
+      result += char;
+      width += charWidth;
+    }
+    return `${result}...`;
   }
   return line;
 }

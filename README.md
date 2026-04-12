@@ -84,7 +84,7 @@ bb-browser site xiaohongshu/me
 ```bash
 cd bb-xhs-export
 node dist/cli.js notes --keyword <q> --top <n> [--output-dir <dir>] [--sort <sort>] [--resume] [--bb-browser-bin <path>] [--note-delay-min-ms <n>] [--note-delay-max-ms <n>]
-node dist/cli.js comments --keyword <q> --top-notes <n> [--output-dir <dir>] [--sort <sort>] [--resume] [--bb-browser-bin <path>]
+node dist/cli.js comments --keyword <q> --top-notes <n> [--output-dir <dir>] [--sort <sort>] [--resume] [--bb-browser-bin <path>] [--comment-delay-min-ms <n>] [--comment-delay-max-ms <n>]
 ```
 
 | 参数选项 | 适用工作流 | 含义说明 |
@@ -98,6 +98,8 @@ node dist/cli.js comments --keyword <q> --top-notes <n> [--output-dir <dir>] [--
 | `--bb-browser-bin` | 两者皆可 | 可选：当你未按照同级存放的推荐模式时，显式指定你的 `bb-browser` 实际执行命令文件。 |
 | `--note-delay-min-ms` | `notes` | 可选：逐条读取笔记详情前的最小随机等待时间（毫秒），默认 `1000`。传 `0` 可关闭最小等待。 |
 | `--note-delay-max-ms` | `notes` | 可选：逐条读取笔记详情前的最大随机等待时间（毫秒），默认 `5000`。必须大于等于 `--note-delay-min-ms`。 |
+| `--comment-delay-min-ms` | `comments` | 可选：评论抓取请求之间的最小随机等待时间（毫秒），默认 `500`。传 `0` 可关闭最小等待。 |
+| `--comment-delay-max-ms` | `comments` | 可选：评论抓取请求之间的最大随机等待时间（毫秒），默认 `2000`。必须大于等于 `--comment-delay-min-ms`。 |
 
 ### 运行示例
 
@@ -114,6 +116,11 @@ node dist/cli.js notes --keyword outfit --top 10 --output-dir ./exports/notes/ou
 导出 5 篇穿搭笔记及其下方的**所有相关评论记录**：
 ```bash
 node dist/cli.js comments --keyword outfit --top-notes 5 --output-dir ./exports/comments/outfit
+```
+
+导出评论，并将评论页/回复页请求间隔配置为 `0.8~1.5` 秒：
+```bash
+node dist/cli.js comments --keyword outfit --top-notes 5 --output-dir ./exports/comments/outfit --comment-delay-min-ms 800 --comment-delay-max-ms 1500
 ```
 
 > **💡 最佳实践与数据隔离**
