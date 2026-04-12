@@ -33,6 +33,7 @@ export interface ExportCommentsOptions extends BbBrowserOptions {
   topNotes: number;
   outputDir: string;
   resume: boolean;
+  sort?: "likes" | "comments" | "latest" | "general" | "collects";
 }
 
 export interface ExportCommentsResult {
@@ -225,7 +226,7 @@ export async function exportCommentsWorkflow(options: ExportCommentsOptions): Pr
 
     while (notesById.size < options.topNotes && hasMore) {
       renderSelectionProgress("搜索结果页", `正在加载第 ${page} 页`);
-      const pageResult = await searchPage(options.keyword, "comments", page, 20, options);
+      const pageResult = await searchPage(options.keyword, options.sort || "comments", page, 20, options);
       writeJson(rawSearchPagePath(layout, page), pageResult);
       const candidates = pageResult.notes.filter((note) => {
         if (!note.note_id) return false;
@@ -241,7 +242,18 @@ export async function exportCommentsWorkflow(options: ExportCommentsOptions): Pr
     }
 
     const selectedNotes = [...notesById.values()]
-      .sort((left, right) => (right.comment_count ?? 0) - (left.comment_count ?? 0) || (right.liked_count ?? 0) - (left.liked_count ?? 0))
+      .sort((left, right) => {
+        if (options.sort === "latest") {
+          return new Date(right.published_at || 0).getTime() - new Date(left.published_at || 0).getTime();
+        }
+        if (options.sort === "likes") {
+          return (right.liked_count ?? 0) - (left.liked_count ?? 0) || (right.comment_count ?? 0) - (left.comment_count ?? 0);
+        }
+        if (options.sort === "collects") {
+          return (right.collect_count ?? 0) - (left.collect_count ?? 0) || (right.comment_count ?? 0) - (left.comment_count ?? 0);
+        }
+        return (right.comment_count ?? 0) - (left.comment_count ?? 0) || (right.liked_count ?? 0) - (left.liked_count ?? 0);
+      })
       .slice(0, options.topNotes)
       .map((note, index) => ({ ...note, rank: index + 1 }));
 

@@ -52,8 +52,8 @@ function printHelp(): void {
     "bb-xhs-export",
     "",
     "用法:",
-    "  bb-xhs-export notes --keyword <q> --top <n> --output-dir <dir> [--resume] [--bb-browser-bin <path>]",
-    "  bb-xhs-export comments --keyword <q> --top-notes <n> --output-dir <dir> [--resume] [--bb-browser-bin <path>]",
+    "  node dist/cli.js notes --keyword <q> --top <n> [--output-dir <dir>] [--sort <sort>] [--resume] [--bb-browser-bin <path>]",
+    "  node dist/cli.js comments --keyword <q> --top-notes <n> [--output-dir <dir>] [--sort <sort>] [--resume] [--bb-browser-bin <path>]",
   ].join("\n"));
 }
 
@@ -67,6 +67,8 @@ async function main(): Promise<void> {
   const flags = parseFlags(rest);
   const bbBrowserBin = typeof flags["bb-browser-bin"] === "string" ? String(flags["bb-browser-bin"]) : undefined;
   const resume = Boolean(flags.resume);
+  const sort = typeof flags.sort === "string" ? flags.sort as "likes" | "comments" | "latest" | "general" | "collects" : undefined;
+  const outputDir = (typeof flags["output-dir"] === "string" && flags["output-dir"].trim()) ? flags["output-dir"].trim() : "./export";
 
   if (command === "notes") {
     const keyword = requireString(flags, "keyword");
@@ -75,9 +77,10 @@ async function main(): Promise<void> {
     const result = await exportNotesWorkflow({
       keyword,
       top,
-      outputDir: requireString(flags, "output-dir"),
+      outputDir,
       resume,
       bbBrowserBin,
+      sort,
     });
     log(`笔记导出完成，共 ${result.noteCount} 篇`);
     log(`输出目录: ${result.outputDir}`);
@@ -92,9 +95,10 @@ async function main(): Promise<void> {
     const result = await exportCommentsWorkflow({
       keyword,
       topNotes,
-      outputDir: requireString(flags, "output-dir"),
+      outputDir,
       resume,
       bbBrowserBin,
+      sort,
     });
     log(`评论导出完成，笔记 ${result.noteCount} 篇，评论 ${result.commentCount} 条`);
     log(`输出目录: ${result.outputDir}`);
