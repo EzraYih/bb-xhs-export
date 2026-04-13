@@ -106,8 +106,8 @@ node dist/cli.js comments --keyword <q> --top-notes <n> [--output-dir <dir>] [--
 | `--note-warmup-max-ms` | `comments` | 可选：进入某条笔记后，在首个评论请求前的最大预热停留时间（毫秒），默认 `8000`。必须大于等于 `--note-warmup-min-ms`。 |
 | `--top-comments-burst-pages` | `comments` | 可选：单轮连续抓取的一级评论页数，默认 `4`。达到后会进入一段较长休息。 |
 | `--reply-burst-pages` | `comments` | 可选：单轮连续抓取的回复页数，默认 `1`。 |
-| `--burst-cooldown-min-ms` | `comments` | 可选：burst 间休息的最小时间（毫秒），默认 `15000`。 |
-| `--burst-cooldown-max-ms` | `comments` | 可选：burst 间休息的最大时间（毫秒），默认 `35000`。必须大于等于 `--burst-cooldown-min-ms`。 |
+| `--burst-cooldown-min-ms` | `comments` | 可选：burst 间休息的最小时间（毫秒），默认 `5000`。 |
+| `--burst-cooldown-max-ms` | `comments` | 可选：burst 间休息的最大时间（毫秒），默认 `20000`。必须大于等于 `--burst-cooldown-min-ms`。 |
 | `--comment-cooldown-every` | `comments` | 可选：每累计抓到多少条评论后做一次冷却，默认 `1000`。传 `0` 可关闭。 |
 | `--comment-cooldown-ms` | `comments` | 可选：按评论条数触发的冷却时长（毫秒），默认 `10000`。 |
 | `--comment-request-cooldown-every-pages` | `comments` | 可选：每抓取多少个请求页后做一次冷却，默认 `20`。传 `0` 可关闭。 |
@@ -166,7 +166,7 @@ reply-page-size = 20
 note-warmup = 4000~8000 ms
 top-comments-burst-pages = 4
 reply-burst-pages = 1
-burst-cooldown = 15000~35000 ms
+burst-cooldown = 5000~20000 ms
 comment-cooldown = every 1000 comments, 10000 ms
 request-page-cooldown = every 20 pages, 20000 ms
 request-page-budget = 160 pages per run
@@ -181,13 +181,13 @@ rate-limit-cooldown = 1800000~5400000 ms
 保守模板：适合新关键词、新账号或刚恢复会话后的第一轮试跑。
 
 ```bash
-node dist/cli.js comments --keyword outfit --top-notes 5 --output-dir ./exports/comments/outfit --comment-delay-min-ms 800 --comment-delay-max-ms 2000 --top-comments-page-size 20 --reply-page-size 20 --note-warmup-min-ms 4000 --note-warmup-max-ms 8000 --top-comments-burst-pages 2 --reply-burst-pages 1 --burst-cooldown-min-ms 15000 --burst-cooldown-max-ms 35000 --comment-max-request-pages-per-run 80 --max-reply-pages-per-thread-per-run 10
+node dist/cli.js comments --keyword outfit --top-notes 5 --output-dir ./exports/comments/outfit --comment-delay-min-ms 800 --comment-delay-max-ms 2000 --top-comments-page-size 20 --reply-page-size 20 --note-warmup-min-ms 4000 --note-warmup-max-ms 8000 --top-comments-burst-pages 2 --reply-burst-pages 1 --burst-cooldown-min-ms 5000 --burst-cooldown-max-ms 20000 --comment-max-request-pages-per-run 80 --max-reply-pages-per-thread-per-run 10
 ```
 
 当前推荐模板：用于已经连续多轮稳定、希望兼顾效率和风控的常用配置。
 
 ```bash
-node dist/cli.js comments --keyword outfit --top-notes 5 --output-dir ./exports/comments/outfit --comment-delay-min-ms 500 --comment-delay-max-ms 2000 --top-comments-page-size 20 --reply-page-size 20 --note-warmup-min-ms 4000 --note-warmup-max-ms 8000 --top-comments-burst-pages 4 --reply-burst-pages 1 --burst-cooldown-min-ms 15000 --burst-cooldown-max-ms 35000 --comment-request-cooldown-every-pages 20 --comment-request-cooldown-ms 20000 --comment-max-request-pages-per-run 160 --heavy-reply-threshold 100 --max-reply-pages-per-thread-per-run 20 --comment-backoff-min-ms 120000 --comment-backoff-max-ms 300000 --comment-backoff-max-retries 1 --rate-limit-cooldown-min-ms 1800000 --rate-limit-cooldown-max-ms 5400000
+node dist/cli.js comments --keyword outfit --top-notes 5 --output-dir ./exports/comments/outfit --comment-delay-min-ms 500 --comment-delay-max-ms 2000 --top-comments-page-size 20 --reply-page-size 20 --note-warmup-min-ms 4000 --note-warmup-max-ms 8000 --top-comments-burst-pages 4 --reply-burst-pages 1 --burst-cooldown-min-ms 5000 --burst-cooldown-max-ms 20000 --comment-request-cooldown-every-pages 20 --comment-request-cooldown-ms 20000 --comment-max-request-pages-per-run 160 --heavy-reply-threshold 100 --max-reply-pages-per-thread-per-run 20 --comment-backoff-min-ms 120000 --comment-backoff-max-ms 300000 --comment-backoff-max-retries 1 --rate-limit-cooldown-min-ms 1800000 --rate-limit-cooldown-max-ms 5400000
 ```
 
 激进观察模板：仅建议在连续多轮无风控后再上调，用于短期验证吞吐上限。
