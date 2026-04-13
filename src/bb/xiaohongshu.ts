@@ -1,5 +1,9 @@
 import { BbBrowserError, runBbBrowserJson, runSiteJson, type BbBrowserOptions } from "./run-site.js";
 
+interface XiaohongshuAdapterOptions extends BbBrowserOptions {
+  commentContextWarmupMs?: number;
+}
+
 export interface SearchPageNote {
   note_id: string;
   xsec_token: string | null;
@@ -72,6 +76,14 @@ export interface CommentPageRecord {
   quoted_comment_content: string | null;
 }
 
+export interface CommentReplyThreadPreview {
+  comment_id: string;
+  sub_comment_count: number | null;
+  reply_cursor: string | null;
+  reply_has_more: boolean;
+  preview_replies: CommentPageRecord[];
+}
+
 export interface CommentsPageResult {
   note_id: string;
   note_url: string | null;
@@ -80,6 +92,7 @@ export interface CommentsPageResult {
   has_more: boolean;
   count: number;
   comments: CommentPageRecord[];
+  reply_threads?: CommentReplyThreadPreview[];
 }
 
 export interface CommentRepliesPageResult extends CommentsPageResult {
@@ -238,11 +251,14 @@ export async function commentsPage(
   xsecToken: string | null,
   cursor: string | null,
   limit: number,
-  options: BbBrowserOptions = {},
+  options: XiaohongshuAdapterOptions = {},
 ): Promise<CommentsPageResult> {
   const args = [noteId, "--limit", String(limit)];
   if (xsecToken) args.push("--xsec_token", xsecToken);
   if (cursor) args.push("--cursor", cursor);
+  if ((options.commentContextWarmupMs ?? 0) > 0) {
+    args.push("--context_warmup_ms", String(options.commentContextWarmupMs));
+  }
   return await runXiaohongshuSiteJson<CommentsPageResult>("xiaohongshu/comments-page", args, options);
 }
 
@@ -252,10 +268,13 @@ export async function commentRepliesPage(
   xsecToken: string | null,
   cursor: string | null,
   limit: number,
-  options: BbBrowserOptions = {},
+  options: XiaohongshuAdapterOptions = {},
 ): Promise<CommentRepliesPageResult> {
   const args = [noteId, commentId, "--limit", String(limit)];
   if (xsecToken) args.push("--xsec_token", xsecToken);
   if (cursor) args.push("--cursor", cursor);
+  if ((options.commentContextWarmupMs ?? 0) > 0) {
+    args.push("--context_warmup_ms", String(options.commentContextWarmupMs));
+  }
   return await runXiaohongshuSiteJson<CommentRepliesPageResult>("xiaohongshu/comment-replies-page", args, options);
 }

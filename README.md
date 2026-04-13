@@ -84,7 +84,7 @@ bb-browser site xiaohongshu/me
 ```bash
 cd bb-xhs-export
 node dist/cli.js notes --keyword <q> --top <n> [--output-dir <dir>] [--sort <sort>] [--resume] [--bb-browser-bin <path>] [--note-delay-min-ms <n>] [--note-delay-max-ms <n>]
-node dist/cli.js comments --keyword <q> --top-notes <n> [--output-dir <dir>] [--sort <sort>] [--resume] [--bb-browser-bin <path>] [--comment-delay-min-ms <n>] [--comment-delay-max-ms <n>]
+node dist/cli.js comments --keyword <q> --top-notes <n> [--output-dir <dir>] [--sort <sort>] [--resume] [--bb-browser-bin <path>] [--comment-delay-min-ms <n>] [--comment-delay-max-ms <n>] [--top-comments-page-size <n>] [--reply-page-size <n>] [--note-warmup-min-ms <n>] [--note-warmup-max-ms <n>] [--top-comments-burst-pages <n>] [--reply-burst-pages <n>] [--burst-cooldown-min-ms <n>] [--burst-cooldown-max-ms <n>] [--comment-cooldown-every <n>] [--comment-cooldown-ms <n>] [--comment-request-cooldown-every-pages <n>] [--comment-request-cooldown-ms <n>] [--comment-max-request-pages-per-run <n>] [--heavy-reply-threshold <n>] [--max-reply-pages-per-thread-per-run <n>] [--comment-backoff-min-ms <n>] [--comment-backoff-max-ms <n>] [--comment-backoff-max-retries <n>] [--rate-limit-cooldown-min-ms <n>] [--rate-limit-cooldown-max-ms <n>]
 ```
 
 | 参数选项 | 适用工作流 | 含义说明 |
@@ -100,6 +100,26 @@ node dist/cli.js comments --keyword <q> --top-notes <n> [--output-dir <dir>] [--
 | `--note-delay-max-ms` | `notes` | 可选：逐条读取笔记详情前的最大随机等待时间（毫秒），默认 `5000`。必须大于等于 `--note-delay-min-ms`。 |
 | `--comment-delay-min-ms` | `comments` | 可选：评论抓取请求之间的最小随机等待时间（毫秒），默认 `500`。传 `0` 可关闭最小等待。 |
 | `--comment-delay-max-ms` | `comments` | 可选：评论抓取请求之间的最大随机等待时间（毫秒），默认 `2000`。必须大于等于 `--comment-delay-min-ms`。 |
+| `--top-comments-page-size` | `comments` | 可选：一级评论分页大小，默认 `20`。数值越大，请求总页数更少，但单次接口负载更高。 |
+| `--reply-page-size` | `comments` | 可选：楼中楼回复分页大小，默认 `20`。 |
+| `--note-warmup-min-ms` | `comments` | 可选：进入某条笔记后，在首个评论请求前的最小预热停留时间（毫秒），默认 `4000`。 |
+| `--note-warmup-max-ms` | `comments` | 可选：进入某条笔记后，在首个评论请求前的最大预热停留时间（毫秒），默认 `8000`。必须大于等于 `--note-warmup-min-ms`。 |
+| `--top-comments-burst-pages` | `comments` | 可选：单轮连续抓取的一级评论页数，默认 `4`。达到后会进入一段较长休息。 |
+| `--reply-burst-pages` | `comments` | 可选：单轮连续抓取的回复页数，默认 `1`。 |
+| `--burst-cooldown-min-ms` | `comments` | 可选：burst 间休息的最小时间（毫秒），默认 `15000`。 |
+| `--burst-cooldown-max-ms` | `comments` | 可选：burst 间休息的最大时间（毫秒），默认 `35000`。必须大于等于 `--burst-cooldown-min-ms`。 |
+| `--comment-cooldown-every` | `comments` | 可选：每累计抓到多少条评论后做一次冷却，默认 `1000`。传 `0` 可关闭。 |
+| `--comment-cooldown-ms` | `comments` | 可选：按评论条数触发的冷却时长（毫秒），默认 `10000`。 |
+| `--comment-request-cooldown-every-pages` | `comments` | 可选：每抓取多少个请求页后做一次冷却，默认 `20`。传 `0` 可关闭。 |
+| `--comment-request-cooldown-ms` | `comments` | 可选：按请求页触发的冷却时长（毫秒），默认 `20000`。 |
+| `--comment-max-request-pages-per-run` | `comments` | 可选：单次运行允许消耗的请求页预算，默认 `160`。传 `0` 可关闭该预算。 |
+| `--heavy-reply-threshold` | `comments` | 可选：将某条 root comment 判定为“重线程”的回复数阈值，默认 `100`。重线程会被更保守地分批抓取。 |
+| `--max-reply-pages-per-thread-per-run` | `comments` | 可选：单个 root comment 在一次运行中最多抓取多少页回复，默认 `20`。传 `0` 可关闭。 |
+| `--comment-backoff-min-ms` | `comments` | 可选：遇到限流后，单次退避等待的最小时间（毫秒），默认 `120000`。 |
+| `--comment-backoff-max-ms` | `comments` | 可选：遇到限流后，单次退避等待的最大时间（毫秒），默认 `300000`。必须大于等于 `--comment-backoff-min-ms`。 |
+| `--comment-backoff-max-retries` | `comments` | 可选：单次运行内，遇到限流后最多重试多少次，默认 `1`。传 `0` 可关闭。 |
+| `--rate-limit-cooldown-min-ms` | `comments` | 可选：触发强风控后写入 checkpoint 的最小冷却时间（毫秒），默认 `1800000`。 |
+| `--rate-limit-cooldown-max-ms` | `comments` | 可选：触发强风控后写入 checkpoint 的最大冷却时间（毫秒），默认 `5400000`。必须大于等于 `--rate-limit-cooldown-min-ms`。 |
 
 ### 运行示例
 
@@ -127,6 +147,54 @@ node dist/cli.js comments --keyword outfit --top-notes 5 --output-dir ./exports/
 > 如果连续执行两次命令搜索不同的 `--keyword`，且没有更换指定的 `--output-dir` 目录，生成的 `normalized/notes.json` 等结果归档库文件**将会彻底覆盖 (Overwrite)** 为最新这一批 keyword 的结果。
 > 
 > 对此，**强烈建议：** 针对不同维度的提取主题，应当如上方的 CLI 示例代码所示，通过 `--output-dir` 显式隔离开来归档（例如分别输出到 `/outfit` 与 `/makeup` 的多级子目录之下），切勿混杂使用同一级目录，以免造成数据覆盖与丢失。
+
+### 评论导出高级节奏参数
+
+`comments` 工作流除了基础的请求间隔，还支持更细的“分页节奏”控制。建议优先调整这几组参数：
+
+- **分页大小**：`--top-comments-page-size`、`--reply-page-size`
+- **进入笔记后的预热停留**：`--note-warmup-min-ms`、`--note-warmup-max-ms`
+- **分段抓取节奏**：`--top-comments-burst-pages`、`--reply-burst-pages`、`--burst-cooldown-min-ms`、`--burst-cooldown-max-ms`
+- **总量预算与重线程限制**：`--comment-max-request-pages-per-run`、`--heavy-reply-threshold`、`--max-reply-pages-per-thread-per-run`
+- **限流恢复**：`--comment-backoff-*`、`--rate-limit-cooldown-*`
+
+当前默认值（与代码保持同步）：
+
+```text
+top-comments-page-size = 20
+reply-page-size = 20
+note-warmup = 4000~8000 ms
+top-comments-burst-pages = 4
+reply-burst-pages = 1
+burst-cooldown = 15000~35000 ms
+comment-cooldown = every 1000 comments, 10000 ms
+request-page-cooldown = every 20 pages, 20000 ms
+request-page-budget = 160 pages per run
+heavy-reply-threshold = 100
+max-reply-pages-per-thread-per-run = 20
+comment-backoff = 120000~300000 ms x1
+rate-limit-cooldown = 1800000~5400000 ms
+```
+
+### 推荐配置模板
+
+保守模板：适合新关键词、新账号或刚恢复会话后的第一轮试跑。
+
+```bash
+node dist/cli.js comments --keyword outfit --top-notes 5 --output-dir ./exports/comments/outfit --comment-delay-min-ms 800 --comment-delay-max-ms 2000 --top-comments-page-size 20 --reply-page-size 20 --note-warmup-min-ms 4000 --note-warmup-max-ms 8000 --top-comments-burst-pages 2 --reply-burst-pages 1 --burst-cooldown-min-ms 15000 --burst-cooldown-max-ms 35000 --comment-max-request-pages-per-run 80 --max-reply-pages-per-thread-per-run 10
+```
+
+当前推荐模板：用于已经连续多轮稳定、希望兼顾效率和风控的常用配置。
+
+```bash
+node dist/cli.js comments --keyword outfit --top-notes 5 --output-dir ./exports/comments/outfit --comment-delay-min-ms 500 --comment-delay-max-ms 2000 --top-comments-page-size 20 --reply-page-size 20 --note-warmup-min-ms 4000 --note-warmup-max-ms 8000 --top-comments-burst-pages 4 --reply-burst-pages 1 --burst-cooldown-min-ms 15000 --burst-cooldown-max-ms 35000 --comment-request-cooldown-every-pages 20 --comment-request-cooldown-ms 20000 --comment-max-request-pages-per-run 160 --heavy-reply-threshold 100 --max-reply-pages-per-thread-per-run 20 --comment-backoff-min-ms 120000 --comment-backoff-max-ms 300000 --comment-backoff-max-retries 1 --rate-limit-cooldown-min-ms 1800000 --rate-limit-cooldown-max-ms 5400000
+```
+
+激进观察模板：仅建议在连续多轮无风控后再上调，用于短期验证吞吐上限。
+
+```bash
+node dist/cli.js comments --keyword outfit --top-notes 5 --output-dir ./exports/comments/outfit --comment-delay-min-ms 500 --comment-delay-max-ms 1500 --top-comments-page-size 20 --reply-page-size 20 --note-warmup-min-ms 3000 --note-warmup-max-ms 6000 --top-comments-burst-pages 4 --reply-burst-pages 1 --burst-cooldown-min-ms 10000 --burst-cooldown-max-ms 25000 --comment-request-cooldown-every-pages 20 --comment-request-cooldown-ms 20000 --comment-max-request-pages-per-run 160 --heavy-reply-threshold 100 --max-reply-pages-per-thread-per-run 20
+```
 
 ### 任务恢复与断点续传 (Resume)
 

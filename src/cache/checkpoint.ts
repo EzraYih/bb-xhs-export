@@ -19,13 +19,35 @@ export interface CommentsCheckpoint {
   selected_note_ids: string[];
   completed_note_ids: string[];
   failed_notes: Record<string, string>;
+  cooldown_until?: string | null;
+  cooldown_reason?: string | null;
   completed: boolean;
+}
+
+export interface ReplyQueueCursorState {
+  comment_id: string;
+  sub_comment_count: number;
+  reply_cursor: string | null;
+  reply_page_index: number;
+  done: boolean;
+}
+
+export interface NoteCommentsCurrentPagePartial {
+  cursor_in: string | null;
+  page_index: number;
+  cursor_out: string | null;
+  has_more: boolean;
+  roots: ReplyQueueCursorState[];
+  rotation_index: number;
 }
 
 export interface NoteCommentsPartial {
   note_id: string;
   next_cursor: string | null;
   comments_page_index: number;
+  current_page?: NoteCommentsCurrentPagePartial | null;
+  reply_page_count?: number;
+  request_page_count?: number;
   collected: unknown[];   // typed as CommentRecord[] at call site
   seen_comment_ids: string[];
 }
