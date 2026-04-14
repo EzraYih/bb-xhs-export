@@ -108,29 +108,6 @@ export interface CommentPageRecord {
   quoted_comment_content: string | null;
 }
 
-export interface CommentReplyThreadPreview {
-  comment_id: string;
-  sub_comment_count: number | null;
-  reply_cursor: string | null;
-  reply_has_more: boolean;
-  preview_replies: CommentPageRecord[];
-}
-
-export interface CommentsPageResult {
-  note_id: string;
-  note_url: string | null;
-  cursor_in: string | null;
-  cursor_out: string | null;
-  has_more: boolean;
-  count: number;
-  comments: CommentPageRecord[];
-  reply_threads?: CommentReplyThreadPreview[];
-}
-
-export interface CommentRepliesPageResult extends CommentsPageResult {
-  comment_id: string;
-}
-
 export interface CommentChunkReplyQueueItem {
   comment_id: string;
   sub_comment_count: number;
@@ -342,22 +319,6 @@ export async function notesChunk(
   return await runXiaohongshuSiteJson<NotesChunkResult>("xiaohongshu/notes-chunk", args, options);
 }
 
-export async function commentsPage(
-  noteId: string,
-  xsecToken: string | null,
-  cursor: string | null,
-  limit: number,
-  options: XiaohongshuAdapterOptions = {},
-): Promise<CommentsPageResult> {
-  const args = [noteId, "--limit", String(limit)];
-  if (xsecToken) args.push("--xsec_token", xsecToken);
-  if (cursor) args.push("--cursor", cursor);
-  if ((options.commentContextWarmupMs ?? 0) > 0) {
-    args.push("--context_warmup_ms", String(options.commentContextWarmupMs));
-  }
-  return await runXiaohongshuSiteJson<CommentsPageResult>("xiaohongshu/comments-page", args, options);
-}
-
 interface XiaohongshuChunkOptions extends XiaohongshuAdapterOptions {
   sessionId?: string;
   sessionStateJson?: string;
@@ -370,23 +331,6 @@ interface XiaohongshuChunkOptions extends XiaohongshuAdapterOptions {
   intraChunkIdleMinMs?: number;
   intraChunkIdleMaxMs?: number;
   heavyReplyThreshold?: number;
-}
-
-export async function commentRepliesPage(
-  noteId: string,
-  commentId: string,
-  xsecToken: string | null,
-  cursor: string | null,
-  limit: number,
-  options: XiaohongshuAdapterOptions = {},
-): Promise<CommentRepliesPageResult> {
-  const args = [noteId, commentId, "--limit", String(limit)];
-  if (xsecToken) args.push("--xsec_token", xsecToken);
-  if (cursor) args.push("--cursor", cursor);
-  if ((options.commentContextWarmupMs ?? 0) > 0) {
-    args.push("--context_warmup_ms", String(options.commentContextWarmupMs));
-  }
-  return await runXiaohongshuSiteJson<CommentRepliesPageResult>("xiaohongshu/comment-replies-page", args, options);
 }
 
 export async function commentsChunk(
