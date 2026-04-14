@@ -18,14 +18,22 @@
 社区原版项目为 [epiral/bb-browser](https://github.com/epiral/bb-browser) 和 [epiral/bb-sites](https://github.com/epiral/bb-sites)。
 本项目所依赖的定制化 fork 分仓库地址为 [EzraYih/bb-browser](https://github.com/EzraYih/bb-browser) 和 [EzraYih/bb-sites](https://github.com/EzraYih/bb-sites)。
 
+> **版本配套要求**
+> 当前已验证可用的组合为：
+> - `bb-xhs-export`：当前仓库 `main`
+> - `bb-browser`：`0.11.3` 版本的 `feature/xhs-export` 分支
+> - `bb-sites`：`feature/xhs-export` 分支，直接放在 `~/.bb-browser/bb-sites`
+>
+> `bb-xhs-export` 不要和 npm 全局安装的社区版 `bb-browser`，或被 `bb-browser site update` 覆盖过的社区版 `bb-sites` 混用。否则 `notes-chunk`、`comments-chunk` 等小红书导出工作流原语可能不存在，或行为与本文档不一致。
+
 ## 🎯 核心功能 (Workflows)
 
-`bb-browser` 提供稳定的小红书页面抓取原语（如 `search-page`、`note-detail`、`comments-page` 等）。本项目将这些原语打包为两类高阶导出工作流：
+`bb-browser` 提供稳定的小红书页面抓取原语（如 `search-page`、`note-detail`），并通过 `notes-chunk` 与 `comments-chunk` 提供浏览器页内的分块详情/评论采集能力。本项目将这些原语打包为两类高阶导出工作流：
 
 | 工作流 | 功能说明 | 核心输出 |
 |---|---|---|
-| `notes` | 按关键词搜索小红书，按点赞量选取热门笔记，抓取并渲染笔记详情。 | 原始 JSON、规范化 `notes.json`、Markdown 格式的笔记文件集合。 |
-| `comments` | 按关键词搜索小红书，获取热门笔记，并进一步爬取这些笔记的顶层评论及回复流。 | 原始 JSON、规范化 `notes.json` 及 `comments/*.json`、Markdown 格式评论集合。 |
+| `notes` | 按关键词搜索小红书，先积累候选摘要，再以 `notes-chunk` 分块抓取入选笔记详情并渲染。 | 原始搜索页与笔记详情 JSON、规范化 `notes.json`、Markdown 格式的笔记文件集合、可恢复 checkpoint。 |
+| `comments` | 按关键词搜索小红书，先基于搜索摘要选择候选笔记，只对最终入选笔记拉取详情，再以 chunk 方式持续抓取顶层评论及回复。 | 原始搜索页与笔记详情 JSON、规范化 `notes.json` 及 `comments/*.json`、Markdown 格式评论集合、可恢复 checkpoint。 |
 
 *每次成功运行结束后，会自动在导出目录生成 `manifest.json`，汇总摘要计数、失败记录及文件路径列表。*
 
@@ -83,43 +91,33 @@ bb-browser site xiaohongshu/me
 
 ```bash
 cd bb-xhs-export
-node dist/cli.js notes --keyword <q> --top <n> [--output-dir <dir>] [--sort <sort>] [--resume] [--bb-browser-bin <path>] [--note-delay-min-ms <n>] [--note-delay-max-ms <n>]
-node dist/cli.js comments --keyword <q> --top-notes <n> [--output-dir <dir>] [--sort <sort>] [--resume] [--bb-browser-bin <path>] [--comment-delay-min-ms <n>] [--comment-delay-max-ms <n>] [--top-comments-page-size <n>] [--reply-page-size <n>] [--note-warmup-min-ms <n>] [--note-warmup-max-ms <n>] [--top-comments-burst-pages <n>] [--reply-burst-pages <n>] [--burst-cooldown-min-ms <n>] [--burst-cooldown-max-ms <n>] [--comment-cooldown-every <n>] [--comment-cooldown-ms <n>] [--comment-request-cooldown-every-pages <n>] [--comment-request-cooldown-ms <n>] [--comment-max-request-pages-per-run <n>] [--heavy-reply-threshold <n>] [--max-reply-pages-per-thread-per-run <n>] [--comment-backoff-min-ms <n>] [--comment-backoff-max-ms <n>] [--comment-backoff-max-retries <n>] [--rate-limit-cooldown-min-ms <n>] [--rate-limit-cooldown-max-ms <n>]
+node dist/cli.js notes --keyword <q> --top <n> [--output-dir <dir>] [--sort <sort>] [--resume] [--bb-browser-bin <path>] [--note-delay-min-ms <n>] [--note-delay-max-ms <n>] [--notes-chunk-size <n>] [--notes-chunk-pause-min-ms <n>] [--notes-chunk-pause-max-ms <n>] [--selection-buffer-size <n>]
+node dist/cli.js comments --keyword <q> --top-notes <n> [--output-dir <dir>] [--sort <sort>] [--resume] [--bb-browser-bin <path>] [--chunk-max-requests <n>] [--chunk-pause-min-ms <n>] [--chunk-pause-max-ms <n>] [--note-pause-min-ms <n>] [--note-pause-max-ms <n>]
 ```
 
 | 参数选项 | 适用工作流 | 含义说明 |
 |---|---|---|
 | `--keyword` | 两者皆可 | 必填：用于搜索定位的小红书关键词。 |
-| `--sort` | 两者皆可 | 可选：筛选数据的排序规则，可选 `likes`、`comments`、`latest`、`general`、`collects`。如果你不传，`notes` 工作流默认寻找**点赞最多(`likes`)**，而 `comments` 工作流默认寻找**评论最多(`comments`)**。<br><br>**不传 sort 时的具体排序逻辑**：搜索 API 先按指定排序获取笔记，随后在本地聚合阶段，**默认按点赞数(likes)降序排列**，若点赞数相同则按**评论数**降序排列。 |
+| `--sort` | 两者皆可 | 可选：筛选数据的排序规则，可选 `likes`、`comments`、`latest`、`general`、`collects`。如果你不传，`notes` 工作流默认寻找**点赞最多(`likes`)**，而 `comments` 工作流默认寻找**评论最多(`comments`)**。 |
 | `--top` | `notes` | 将关键词搜索结果按指定排序规则，将前 top 个笔记导出。 |
-| `--top-notes` | `comments` | 将关键词搜索结果按指定排序规则，将前 top-notes 个笔记的评论全部导出 |
+| `--top-notes` | `comments` | 将关键词搜索结果按指定排序规则，将前 top-notes 个笔记的评论全部导出。 |
 | `--output-dir` | 两者皆可 | 可选：保存原始数据、格式化 JSON、Markdown 和检查点的根路径。默认存放在当前命令执行目录下的 `./export` 目录。 |
 | `--resume` | 两者皆可 | 可选：从之前意外中断时的检查点数据恢复流程续传。 |
 | `--bb-browser-bin` | 两者皆可 | 可选：当你未按照同级存放的推荐模式时，显式指定你的 `bb-browser` 实际执行命令文件。 |
-| `--note-delay-min-ms` | `notes` | 可选：逐条读取笔记详情前的最小随机等待时间（毫秒），默认 `1000`。传 `0` 可关闭最小等待。 |
-| `--note-delay-max-ms` | `notes` | 可选：逐条读取笔记详情前的最大随机等待时间（毫秒），默认 `5000`。必须大于等于 `--note-delay-min-ms`。 |
-| `--comment-delay-min-ms` | `comments` | 可选：评论抓取请求之间的最小随机等待时间（毫秒），默认 `500`。传 `0` 可关闭最小等待。 |
-| `--comment-delay-max-ms` | `comments` | 可选：评论抓取请求之间的最大随机等待时间（毫秒），默认 `2000`。必须大于等于 `--comment-delay-min-ms`。 |
-| `--top-comments-page-size` | `comments` | 可选：一级评论分页大小，默认 `20`。数值越大，请求总页数更少，但单次接口负载更高。 |
-| `--reply-page-size` | `comments` | 可选：楼中楼回复分页大小，默认 `20`。 |
-| `--note-warmup-min-ms` | `comments` | 可选：进入某条笔记后，在首个评论请求前的最小预热停留时间（毫秒），默认 `4000`。 |
-| `--note-warmup-max-ms` | `comments` | 可选：进入某条笔记后，在首个评论请求前的最大预热停留时间（毫秒），默认 `8000`。必须大于等于 `--note-warmup-min-ms`。 |
-| `--top-comments-burst-pages` | `comments` | 可选：单轮连续抓取的一级评论页数，默认 `4`。达到后会进入一段较长休息。 |
-| `--reply-burst-pages` | `comments` | 可选：单轮连续抓取的回复页数，默认 `1`。 |
-| `--burst-cooldown-min-ms` | `comments` | 可选：burst 间休息的最小时间（毫秒），默认 `5000`。 |
-| `--burst-cooldown-max-ms` | `comments` | 可选：burst 间休息的最大时间（毫秒），默认 `20000`。必须大于等于 `--burst-cooldown-min-ms`。 |
-| `--comment-cooldown-every` | `comments` | 可选：每累计抓到多少条评论后做一次冷却，默认 `1000`。传 `0` 可关闭。 |
-| `--comment-cooldown-ms` | `comments` | 可选：按评论条数触发的冷却时长（毫秒），默认 `10000`。 |
-| `--comment-request-cooldown-every-pages` | `comments` | 可选：每抓取多少个请求页后做一次冷却，默认 `20`。传 `0` 可关闭。 |
-| `--comment-request-cooldown-ms` | `comments` | 可选：按请求页触发的冷却时长（毫秒），默认 `20000`。 |
-| `--comment-max-request-pages-per-run` | `comments` | 可选：单次运行允许消耗的请求页预算，默认 `160`。传 `0` 可关闭该预算。 |
-| `--heavy-reply-threshold` | `comments` | 可选：将某条 root comment 判定为“重线程”的回复数阈值，默认 `100`。重线程会被更保守地分批抓取。 |
-| `--max-reply-pages-per-thread-per-run` | `comments` | 可选：单个 root comment 在一次运行中最多抓取多少页回复，默认 `20`。传 `0` 可关闭。 |
-| `--comment-backoff-min-ms` | `comments` | 可选：遇到限流后，单次退避等待的最小时间（毫秒），默认 `120000`。 |
-| `--comment-backoff-max-ms` | `comments` | 可选：遇到限流后，单次退避等待的最大时间（毫秒），默认 `300000`。必须大于等于 `--comment-backoff-min-ms`。 |
-| `--comment-backoff-max-retries` | `comments` | 可选：单次运行内，遇到限流后最多重试多少次，默认 `1`。传 `0` 可关闭。 |
-| `--rate-limit-cooldown-min-ms` | `comments` | 可选：触发强风控后写入 checkpoint 的最小冷却时间（毫秒），默认 `1800000`。 |
-| `--rate-limit-cooldown-max-ms` | `comments` | 可选：触发强风控后写入 checkpoint 的最大冷却时间（毫秒），默认 `5400000`。必须大于等于 `--rate-limit-cooldown-min-ms`。 |
+| `--note-delay-min-ms` | `notes` | 可选：同一轮 `notes-chunk` 内，两篇笔记详情之间的最小随机停留时间（毫秒），默认 `1000`。传 `0` 可关闭最小等待。 |
+| `--note-delay-max-ms` | `notes` | 可选：同一轮 `notes-chunk` 内，两篇笔记详情之间的最大随机停留时间（毫秒），默认 `5000`。必须大于等于 `--note-delay-min-ms`。 |
+| `--notes-chunk-size` | `notes` | 可选：单轮详情分块最多连续抓取多少篇笔记详情，默认 `2`。建议保持小批量，不要激进放大。 |
+| `--notes-chunk-pause-min-ms` | `notes` | 可选：相邻两轮 `notes-chunk` 之间的最小暂停时间（毫秒），默认 `8000`。 |
+| `--notes-chunk-pause-max-ms` | `notes` | 可选：相邻两轮 `notes-chunk` 之间的最大暂停时间（毫秒），默认 `15000`。必须大于等于 `--notes-chunk-pause-min-ms`。 |
+| `--chunk-max-requests` | `comments` | 可选：单个 chunk 在浏览器页内最多发起多少次评论 API 请求，默认 `14`。 |
+| `--chunk-pause-min-ms` | `comments` | 可选：相邻两个 chunk 之间的最小暂停时间（毫秒），默认 `3000`。 |
+| `--chunk-pause-max-ms` | `comments` | 可选：相邻两个 chunk 之间的最大暂停时间（毫秒），默认 `8000`。必须大于等于 `--chunk-pause-min-ms`。 |
+| `--note-pause-min-ms` | `comments` | 可选：切换到下一条笔记前的最小暂停时间（毫秒），默认 `10000`。 |
+| `--note-pause-max-ms` | `comments` | 可选：切换到下一条笔记前的最大暂停时间（毫秒），默认 `20000`。必须大于等于 `--note-pause-min-ms`。 |
+| `--selection-buffer-size` | `notes` | 可选：搜索阶段先积累多少条候选摘要再做最终选笔记。`notes` 默认 `20`，并始终不小于 `--top`。 |
+
+评论导出现在只保留 5 个公开调参面：`--chunk-max-requests`、`--chunk-pause-min-ms`、`--chunk-pause-max-ms`、`--note-pause-min-ms`、`--note-pause-max-ms`。
+旧的分页、预热、候选池、回复线程和冷却时间参数已改为内部默认值，不再开放 CLI 调参。
 
 ### 运行示例
 
@@ -128,9 +126,14 @@ node dist/cli.js comments --keyword <q> --top-notes <n> [--output-dir <dir>] [--
 node dist/cli.js notes --keyword outfit --top 10 --output-dir ./exports/notes/outfit
 ```
 
-导出 10 篇笔记，并将每条详情抓取间隔配置为 `2~6` 秒：
+导出 10 篇笔记，并使用默认的安全优先详情分块节奏：
 ```bash
-node dist/cli.js notes --keyword outfit --top 10 --output-dir ./exports/notes/outfit --note-delay-min-ms 2000 --note-delay-max-ms 6000
+node dist/cli.js notes --keyword outfit --top 10 --output-dir ./exports/notes/outfit --notes-chunk-size 2 --notes-chunk-pause-min-ms 8000 --notes-chunk-pause-max-ms 15000
+```
+
+导出 10 篇笔记，并将同一轮分块内的笔记停留时间调到 `2~6` 秒：
+```bash
+node dist/cli.js notes --keyword outfit --top 10 --output-dir ./exports/notes/outfit --note-delay-min-ms 2000 --note-delay-max-ms 6000 --notes-chunk-size 2 --notes-chunk-pause-min-ms 10000 --notes-chunk-pause-max-ms 18000
 ```
 
 导出 5 篇穿搭笔记及其下方的**所有相关评论记录**：
@@ -138,88 +141,233 @@ node dist/cli.js notes --keyword outfit --top 10 --output-dir ./exports/notes/ou
 node dist/cli.js comments --keyword outfit --top-notes 5 --output-dir ./exports/comments/outfit
 ```
 
-导出评论，并将评论页/回复页请求间隔配置为 `0.8~1.5` 秒：
+导出评论，并采用当前默认的公开参数配置：
 ```bash
-node dist/cli.js comments --keyword outfit --top-notes 5 --output-dir ./exports/comments/outfit --comment-delay-min-ms 800 --comment-delay-max-ms 1500
+node dist/cli.js comments --keyword outfit --top-notes 5 --output-dir ./exports/comments/outfit --chunk-max-requests 14 --chunk-pause-min-ms 3000 --chunk-pause-max-ms 8000 --note-pause-min-ms 10000 --note-pause-max-ms 20000
+```
+
+导出评论，并采用更保守的节奏做首轮试跑：
+```bash
+node dist/cli.js comments --keyword outfit --top-notes 5 --output-dir ./exports/comments/outfit --chunk-max-requests 10 --chunk-pause-min-ms 5000 --chunk-pause-max-ms 10000 --note-pause-min-ms 15000 --note-pause-max-ms 25000
 ```
 
 > **💡 最佳实践与数据隔离**
-> 如果连续执行两次命令搜索不同的 `--keyword`，且没有更换指定的 `--output-dir` 目录，生成的 `normalized/notes.json` 等结果归档库文件**将会彻底覆盖 (Overwrite)** 为最新这一批 keyword 的结果。
-> 
-> 对此，**强烈建议：** 针对不同维度的提取主题，应当如上方的 CLI 示例代码所示，通过 `--output-dir` 显式隔离开来归档（例如分别输出到 `/outfit` 与 `/makeup` 的多级子目录之下），切勿混杂使用同一级目录，以免造成数据覆盖与丢失。
+> 如果连续执行两次命令搜索不同的 `--keyword`，且没有更换指定的 `--output-dir` 目录，生成的 `normalized/notes.json` 等结果归档文件会被最新一次运行覆盖。
+>
+> 强烈建议按主题显式隔离输出目录，例如分别输出到 `./exports/comments/outfit` 和 `./exports/comments/makeup`，避免数据混用。
 
-### 评论导出高级节奏参数
+### 笔记工作流设计变化
 
-`comments` 工作流除了基础的请求间隔，还支持更细的“分页节奏”控制。建议优先调整这几组参数：
+新的 `notes` 工作流不再对每篇候选笔记单独调用一次 `note-detail`，而是改成了“候选池 + 分块详情”的模型：
 
-- **分页大小**：`--top-comments-page-size`、`--reply-page-size`
-- **进入笔记后的预热停留**：`--note-warmup-min-ms`、`--note-warmup-max-ms`
-- **分段抓取节奏**：`--top-comments-burst-pages`、`--reply-burst-pages`、`--burst-cooldown-min-ms`、`--burst-cooldown-max-ms`
-- **总量预算与重线程限制**：`--comment-max-request-pages-per-run`、`--heavy-reply-threshold`、`--max-reply-pages-per-thread-per-run`
-- **限流恢复**：`--comment-backoff-*`、`--rate-limit-cooldown-*`
+1. 搜索阶段先调用 `search-page`，积累候选笔记摘要与 `xsec_token`。
+2. 达到 `selection-buffer-size` 后，先按摘要字段（如 `liked_count`、`comment_count`、`published_at`）做本地排序，再挑出当前最值得抓取的一小批笔记。
+3. 详情阶段改为调用 `xiaohongshu/notes-chunk`，一轮连续抓取少量笔记详情，随后暂停一段时间，再继续下一轮。
+4. 断点续传会保存候选池、搜索进度、已完成笔记和失败笔记，并持续刷新 `normalized/notes.json`，避免中途中断后丢失已抓到的详情。
 
-当前默认值（与代码保持同步）：
+这里的 `notes chunk` 可以理解成“**一轮小批量连续抓取笔记详情**”。默认每轮只抓 2 篇详情，目标是减少 CLI 与浏览器之间的往返，同时尽量保持接近自然浏览的打开节奏。
+
+### 评论工作流设计变化
+
+新的 `comments` 工作流不再由 exporter 在外层逐页调度评论 API，而是改成了更粗粒度的分块模型：
+
+1. 搜索阶段先调用 `search-page`，积累候选笔记摘要。
+2. 达到内部候选池阈值后，先按摘要字段（如 `comment_count`、`liked_count`）做本地排序，再只对最终入选笔记拉取 `note-detail`。
+3. 评论阶段改为调用 `xiaohongshu/comments-chunk`，一次推进多页一级评论和多页楼中楼回复，减少 CLI 与浏览器之间的往返。
+4. 断点续传改为保存候选池、每条笔记的 chunk session state，以及已收集的 `comment_id` 集合。
+
+通俗地说，新的采集过程不是“打开一篇笔记后一路抓到底”，而是：
+
+1. 先抓一小段。
+2. 停一下。
+3. 再抓下一小段。
+4. 重复这个过程，直到这一篇笔记的评论抓完。
+
+这里的 `chunk` 可以理解成“**一轮小批量连续采集**”。这样做的目的不是追求一次跑完，而是在不明显触发平台安全限制的前提下，把浏览器内能连续推进的评论页尽量合并到同一轮里，提高整体吞吐。
+
+### 终端进度提示怎么看
+
+评论导出启动时，CLI 会先打印一行总体策略，例如：
+
+```text
+开始导出评论，关键词=outfit，目标笔记数=5，每轮分块最多发起 14 次评论请求，分块间隔=3 秒~8 秒，笔记间隔=10 秒~20 秒
+```
+
+这行的含义是：
+
+- `每轮分块最多发起 14 次评论请求`
+  - 表示一轮小批量采集里，最多连续调用 14 次评论相关接口，然后就先停一下。
+- `分块间隔`
+  - 表示同一篇笔记里，两轮小批量采集之间会随机停顿多久。
+- `笔记间隔`
+  - 表示一篇笔记抓完后，切换到下一篇笔记前会随机停顿多久。
+
+运行过程中，进度条会显示类似下面的文案：
+
+```text
+第 3/5 篇笔记：已采集 220 条评论，累计抓取主评论 6 页、楼中楼回复 36 页，刚完成第 4 轮分块（本轮 14 次请求，新增主评论 2 页、回复 12 页），还有 5 个评论楼层待继续展开
+```
+
+这行的含义是：
+
+- `已采集 220 条评论`
+  - 当前这篇笔记已经累计拿到了 220 条评论记录，包含一级评论和楼中楼回复。
+- `累计抓取主评论 6 页`
+  - 当前这篇笔记下面的一级评论，已经累计翻了 6 页。
+- `累计抓取楼中楼回复 36 页`
+  - 当前这篇笔记下面各个评论线程的回复，已经累计翻了 36 页。
+- `刚完成第 4 轮分块`
+  - 表示这已经是当前笔记的第 4 轮小批量采集。
+- `本轮 14 次请求，新增主评论 2 页、回复 12 页`
+  - 表示刚结束的这一轮里，连续推进了多少次评论接口请求，以及这轮具体新增了多少页主评论和回复。
+- `还有 5 个评论楼层待继续展开`
+  - 表示还有 5 个一级评论的楼中楼回复线程没有抓完，后续轮次会继续推进。
+
+如果看到下面这种提示：
+
+```text
+第 3/5 篇笔记：已采集 220 条评论，累计抓取主评论 6 页、楼中楼回复 36 页，等待 6.5 秒后继续当前笔记
+```
+
+表示当前只是这一篇笔记的两轮分块之间在暂停，还会继续抓当前笔记。
+
+如果看到下面这种提示：
+
+```text
+第 3/5 篇笔记：本篇已采集 220 条评论，本篇已完成，等待 6.5 秒后切换到下一篇笔记
+```
+
+表示当前这篇笔记已经抓完，程序只是在切换到下一篇笔记前做停顿。
+
+### 采集完成后的统计信息
+
+两类工作流在采集完成后都会先收起进度条，再输出一段独立的汇总统计块。
+
+- `notes`
+  - 只输出总汇总，不再展开分笔记明细。
+  - 当前会显示：目标笔记数、本次尝试详情的笔记数、成功导出笔记数、失败笔记数、累计点赞数、累计评论数、累计收藏数、总耗时。
+- `comments`
+  - 会输出总汇总，并继续保留分笔记统计。
+  - 当前会显示：目标笔记数、实际入选笔记数、已完成笔记数、失败笔记数、笔记页显示评论总数、已采集评论总数、总耗时，以及每篇笔记的评论采集明细与失败原因。
+
+### 评论导出关键节奏参数
+
+建议优先调整这几组参数：
+
+- **单次 chunk 预算**：`--chunk-max-requests`
+- **chunk 之间的停顿**：`--chunk-pause-min-ms`、`--chunk-pause-max-ms`
+- **切换笔记时的停顿**：`--note-pause-min-ms`、`--note-pause-max-ms`
+
+当前公开默认值（与代码保持同步）：
+
+```text
+chunk-max-requests = 14
+chunk-pause = 3000~8000 ms
+note-pause = 10000~20000 ms
+```
+
+当前内部固定默认值：
 
 ```text
 top-comments-page-size = 20
-reply-page-size = 20
-note-warmup = 4000~8000 ms
-top-comments-burst-pages = 4
-reply-burst-pages = 1
-burst-cooldown = 5000~20000 ms
-comment-cooldown = every 1000 comments, 10000 ms
-request-page-cooldown = every 20 pages, 20000 ms
-request-page-budget = 160 pages per run
+reply-page-size = 10
+chunk-max-top-pages = 2
+chunk-max-reply-pages = 12
+note-context-warmup = 2000~4000 ms
+intra-chunk-idle = 150~400 ms
 heavy-reply-threshold = 100
-max-reply-pages-per-thread-per-run = 20
-comment-backoff = 120000~300000 ms x1
+selection-buffer-size = 20
 rate-limit-cooldown = 1800000~5400000 ms
 ```
 
 ### 推荐配置模板
 
+默认模板：适合已经稳定运行的新一轮导出，不需要额外参数。
+
+```bash
+node dist/cli.js comments --keyword outfit --top-notes 5 --output-dir ./exports/comments/outfit
+```
+
+平衡模板：适合已经稳定跑过一轮，想兼顾效率和风控的常用配置。
+
+```bash
+node dist/cli.js comments --keyword outfit --top-notes 5 --output-dir ./exports/comments/outfit --chunk-max-requests 14 --chunk-pause-min-ms 3000 --chunk-pause-max-ms 8000 --note-pause-min-ms 10000 --note-pause-max-ms 20000
+```
+
 保守模板：适合新关键词、新账号或刚恢复会话后的第一轮试跑。
 
 ```bash
-node dist/cli.js comments --keyword outfit --top-notes 5 --output-dir ./exports/comments/outfit --comment-delay-min-ms 800 --comment-delay-max-ms 2000 --top-comments-page-size 20 --reply-page-size 20 --note-warmup-min-ms 4000 --note-warmup-max-ms 8000 --top-comments-burst-pages 2 --reply-burst-pages 1 --burst-cooldown-min-ms 5000 --burst-cooldown-max-ms 20000 --comment-max-request-pages-per-run 80 --max-reply-pages-per-thread-per-run 10
-```
-
-当前推荐模板：用于已经连续多轮稳定、希望兼顾效率和风控的常用配置。
-
-```bash
-node dist/cli.js comments --keyword outfit --top-notes 5 --output-dir ./exports/comments/outfit --comment-delay-min-ms 500 --comment-delay-max-ms 2000 --top-comments-page-size 20 --reply-page-size 20 --note-warmup-min-ms 4000 --note-warmup-max-ms 8000 --top-comments-burst-pages 4 --reply-burst-pages 1 --burst-cooldown-min-ms 5000 --burst-cooldown-max-ms 20000 --comment-request-cooldown-every-pages 20 --comment-request-cooldown-ms 20000 --comment-max-request-pages-per-run 160 --heavy-reply-threshold 100 --max-reply-pages-per-thread-per-run 20 --comment-backoff-min-ms 120000 --comment-backoff-max-ms 300000 --comment-backoff-max-retries 1 --rate-limit-cooldown-min-ms 1800000 --rate-limit-cooldown-max-ms 5400000
-```
-
-激进观察模板：仅建议在连续多轮无风控后再上调，用于短期验证吞吐上限。
-
-```bash
-node dist/cli.js comments --keyword outfit --top-notes 5 --output-dir ./exports/comments/outfit --comment-delay-min-ms 500 --comment-delay-max-ms 1500 --top-comments-page-size 20 --reply-page-size 20 --note-warmup-min-ms 3000 --note-warmup-max-ms 6000 --top-comments-burst-pages 4 --reply-burst-pages 1 --burst-cooldown-min-ms 10000 --burst-cooldown-max-ms 25000 --comment-request-cooldown-every-pages 20 --comment-request-cooldown-ms 20000 --comment-max-request-pages-per-run 160 --heavy-reply-threshold 100 --max-reply-pages-per-thread-per-run 20
+node dist/cli.js comments --keyword outfit --top-notes 5 --output-dir ./exports/comments/outfit --chunk-max-requests 10 --chunk-pause-min-ms 5000 --chunk-pause-max-ms 10000 --note-pause-min-ms 15000 --note-pause-max-ms 25000
 ```
 
 ### 任务恢复与断点续传 (Resume)
 
 该工具中的两类工作流都有运行过程的 Checkpoint（检查点保存机制）：
-- `notes` 会记录浏览到的搜索页进度、当前已解析的笔记 ID 列表等。
-- `comments` 会附带记录选择页状态、评论进度和抓取失败情况。
+- `notes` 会记录搜索页进度、候选笔记池、已完成笔记、失败笔记，并在运行过程中持续刷新 `normalized/notes.json`。
+- `comments` 会记录候选笔记池、已选笔记、已完成笔记、失败笔记，以及触发强风控后的冷却时间。
+- `comments` 的每条笔记还会单独写入 `checkpoints/comments-partial-<note_id>.json`，里面保存已收集评论、`seen_comment_ids`、`session_id` 和 `session_state`。
+
+如果浏览器页内的临时会话丢失，`--resume` 会优先使用 checkpoint 中的 `session_state` 重建 chunk 状态。极端情况下，当前笔记可能回放少量已抓过的请求页，但 exporter 会基于 `comment_id` 去重，不会重复写入最终结果。
 
 如果命令中途停止，只需要加上相同的 `--output-dir` 参数同时添加 `--resume` 标志，即可恢复执行：
 ```bash
-node dist/cli.js comments --keyword outfit --top-notes 5 --output-dir ./exports/comments --resume
+node dist/cli.js notes --keyword outfit --top 10 --output-dir ./exports/notes/outfit --resume
 ```
+
+```bash
+node dist/cli.js comments --keyword outfit --top-notes 5 --output-dir ./exports/comments/outfit --resume
+```
+
+### 笔记分块的安全边界
+
+`notes-chunk` 已上线，但它的目标仍然是“减少本地往返开销”，而不是“让平台看到更高频的开笔记行为”。
+
+当前默认值（与代码保持同步）：
+
+```text
+notes-chunk-size = 2
+per-note-idle = 1000~5000 ms
+chunk-pause = 8000~15000 ms
+selection-buffer-size = 20（且不小于 --top）
+detail-concurrency = 1
+```
+
+需要重点避免的风险点：
+
+- **短时间连续打开过多篇笔记详情**
+  - 对平台来说，这仍然是一连串真实的详情页访问，不会因为本地合并成一个 chunk 就自动变安全。
+- **同一个 tab 在短时间内持续跳转多个 `/explore/<note_id>`**
+  - `notes-chunk` 只是把多次详情抓取收敛到一次浏览器内执行，平台看到的仍然是连续详情访问。
+- **单个 chunk 内笔记数量过多**
+  - 一轮连续打开 4 篇以上笔记，风险会明显高于当前默认值。
+- **笔记之间的停留时间压得过短**
+  - 如果把 `--note-delay-*` 压到 `1s` 左右甚至更低，容易表现出自动化节奏。
+- **chunk 之间没有足够的随机停顿**
+  - 如果把 `--notes-chunk-pause-*` 压得太短，长任务会更像持续扫详情页。
+- **多 tab 并发抓笔记详情**
+  - 这是明确不建议的高风险方案，当前实现也保持固定并发 `1`。
+- **在同一轮任务中把详情抓取、评论抓取都推到高频**
+  - 即使单条链路看似安全，同一账号、同一会话同时高频抓详情和翻评论，整体风险仍会叠加。
+
+如果你要用更保守的节奏做首轮试跑，建议优先提高这两组参数：
+
+- `--note-delay-min-ms` / `--note-delay-max-ms`
+- `--notes-chunk-pause-min-ms` / `--notes-chunk-pause-max-ms`
 
 ## 📂 输出结构与数据应用
 
-所有的提取结果将按照明确的高规约目录组织归档：
+所有的提取结果将按照明确的目录结构组织归档：
 
 ```text
 exports/
 ├── manifest.json              # 任务全局统计元数据（含文件清单列表）
 ├── checkpoints/               # [状态持久化] 中断恢复记录配置
+│   ├── comments.json
+│   ├── notes.json
+│   └── comments-partial-<note_id>.json
 ├── raw/                       # [底层数据] 从页面直接捕获的未加工数据
 │   ├── search-pages/
-│   ├── notes/
-│   ├── comments/
-│   └── replies/
+│   └── notes/
 ├── normalized/                # [清洗与结构化] 结构统一、过滤多余字段的实用核心 JSON
 │   ├── notes.json
 │   └── comments/
@@ -233,10 +381,17 @@ exports/
 │       └── 001-<note_id>.md
 └── media/                     # [多媒体预留]
     ├── covers/
-    └── avatars/ ...
+    ├── avatars/
+    ├── images/
+    ├── videos/
+    └── comment-images/
 ```
 
-*注：`comments` 运行模式下，除生成评论本身的对应文件外，依然会建立 `normalized/notes.json` 及笔记对应的详情内容（这样在做分析时可以同时掌握评论及其从属的上下文环境）。*
+补充说明：
+
+- `comments` 运行模式下，除评论文件外，依然会生成 `normalized/notes.json` 及笔记详情，方便分析评论时同时保留上下文。
+- 新的 chunk 流程默认只落盘 `raw/search-pages/` 和 `raw/notes/`。旧版逐页 `raw/comments/`、`raw/replies/` 调试输出不再默认生成。
+- `checkpoints/comments-partial-<note_id>.json` 是评论断点续传的核心文件，里面包含已收集评论与 chunk session state。
 
 ### 🤖 与 AI 模型结合使用指南
 

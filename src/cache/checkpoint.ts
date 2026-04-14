@@ -5,6 +5,9 @@ export interface NotesCheckpoint {
   keyword: string;
   top: number;
   next_search_page: number;
+  selection_next_page?: number;
+  selection_has_more?: boolean;
+  candidate_notes?: unknown[];
   seen_note_ids: string[];
   completed_note_ids: string[];
   failed_notes: Record<string, string>;
@@ -17,6 +20,7 @@ export interface CommentsCheckpoint {
   top_notes: number;
   selection_next_page: number;
   selected_note_ids: string[];
+  candidate_notes?: unknown[];
   completed_note_ids: string[];
   failed_notes: Record<string, string>;
   cooldown_until?: string | null;
@@ -29,7 +33,7 @@ export interface ReplyQueueCursorState {
   sub_comment_count: number;
   reply_cursor: string | null;
   reply_page_index: number;
-  done: boolean;
+  done?: boolean;
 }
 
 export interface NoteCommentsCurrentPagePartial {
@@ -41,10 +45,28 @@ export interface NoteCommentsCurrentPagePartial {
   rotation_index: number;
 }
 
+export interface NoteCommentsSessionPartial {
+  session_id: string;
+  note_id: string;
+  xsec_token?: string | null;
+  note_url?: string | null;
+  top_cursor: string | null;
+  top_page_index: number;
+  top_done: boolean;
+  reply_queue: ReplyQueueCursorState[];
+  request_page_count?: number;
+  top_page_count?: number;
+  reply_page_count?: number;
+  chunk_count?: number;
+  updated_at?: string | null;
+}
+
 export interface NoteCommentsPartial {
   note_id: string;
-  next_cursor: string | null;
-  comments_page_index: number;
+  session_id?: string | null;
+  session_state?: NoteCommentsSessionPartial | null;
+  next_cursor?: string | null;
+  comments_page_index?: number;
   current_page?: NoteCommentsCurrentPagePartial | null;
   reply_page_count?: number;
   request_page_count?: number;

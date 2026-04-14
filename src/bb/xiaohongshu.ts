@@ -56,6 +56,38 @@ export interface NoteDetailResult {
   video_urls: string[];
 }
 
+export interface NotesChunkItem {
+  note_id: string;
+  xsec_token: string | null;
+  title?: string | null;
+  note_url?: string | null;
+}
+
+export interface NotesChunkFailure {
+  note_id: string | null;
+  xsec_token: string | null;
+  title: string | null;
+  note_url: string | null;
+  error: string;
+  hint: string | null;
+  action: string | null;
+}
+
+export interface NotesChunkResult {
+  count: number;
+  notes: NoteDetailResult[];
+  failures: NotesChunkFailure[];
+  stats: {
+    requested_count: number;
+    attempted_count: number;
+    completed_count: number;
+    failed_count: number;
+    elapsed_ms: number;
+    rate_limited: boolean;
+    stop_reason: string;
+  };
+}
+
 export interface CommentPageRecord {
   comment_id: string;
   content_text: string | null;
@@ -97,6 +129,47 @@ export interface CommentsPageResult {
 
 export interface CommentRepliesPageResult extends CommentsPageResult {
   comment_id: string;
+}
+
+export interface CommentChunkReplyQueueItem {
+  comment_id: string;
+  sub_comment_count: number;
+  reply_cursor: string | null;
+  reply_page_index: number;
+}
+
+export interface CommentsChunkSessionState {
+  session_id: string;
+  note_id: string;
+  xsec_token: string | null;
+  note_url: string | null;
+  top_cursor: string | null;
+  top_page_index: number;
+  top_done: boolean;
+  reply_queue: CommentChunkReplyQueueItem[];
+  request_page_count: number;
+  top_page_count: number;
+  reply_page_count: number;
+  chunk_count: number;
+  updated_at: string | null;
+}
+
+export interface CommentsChunkResult {
+  note_id: string;
+  note_url: string | null;
+  session_id: string;
+  session_origin: "fresh" | "cache" | "args";
+  done: boolean;
+  count: number;
+  comments: CommentPageRecord[];
+  session: CommentsChunkSessionState;
+  stats: {
+    request_count: number;
+    top_pages_fetched: number;
+    reply_pages_fetched: number;
+    reply_queue_size: number;
+    elapsed_ms: number;
+  };
 }
 
 interface BrowserTab {
@@ -246,6 +319,29 @@ export async function noteDetail(noteId: string, xsecToken: string | null, optio
   return await runXiaohongshuSiteJson<NoteDetailResult>("xiaohongshu/note-detail", args, options);
 }
 
+interface XiaohongshuNotesChunkOptions extends BbBrowserOptions {
+  maxItems?: number;
+  idleMinMs?: number;
+  idleMaxMs?: number;
+}
+
+export async function notesChunk(
+  items: NotesChunkItem[],
+  options: XiaohongshuNotesChunkOptions = {},
+): Promise<NotesChunkResult> {
+  const args = ["--items_json", JSON.stringify(items)];
+  if ((options.maxItems ?? 0) > 0) {
+    args.push("--max_items", String(options.maxItems));
+  }
+  if ((options.idleMinMs ?? 0) > 0) {
+    args.push("--idle_min_ms", String(options.idleMinMs));
+  }
+  if ((options.idleMaxMs ?? 0) > 0) {
+    args.push("--idle_max_ms", String(options.idleMaxMs));
+  }
+  return await runXiaohongshuSiteJson<NotesChunkResult>("xiaohongshu/notes-chunk", args, options);
+}
+
 export async function commentsPage(
   noteId: string,
   xsecToken: string | null,
@@ -260,6 +356,20 @@ export async function commentsPage(
     args.push("--context_warmup_ms", String(options.commentContextWarmupMs));
   }
   return await runXiaohongshuSiteJson<CommentsPageResult>("xiaohongshu/comments-page", args, options);
+}
+
+interface XiaohongshuChunkOptions extends XiaohongshuAdapterOptions {
+  sessionId?: string;
+  sessionStateJson?: string;
+  resetSession?: boolean;
+  maxRequests?: number;
+  maxTopPages?: number;
+  maxReplyPages?: number;
+  topLimit?: number;
+  replyLimit?: number;
+  intraChunkIdleMinMs?: number;
+  intraChunkIdleMaxMs?: number;
+  heavyReplyThreshold?: number;
 }
 
 export async function commentRepliesPage(
@@ -277,4 +387,44 @@ export async function commentRepliesPage(
     args.push("--context_warmup_ms", String(options.commentContextWarmupMs));
   }
   return await runXiaohongshuSiteJson<CommentRepliesPageResult>("xiaohongshu/comment-replies-page", args, options);
+}
+
+export async function commentsChunk(
+  noteId: string,
+  xsecToken: string | null,
+  options: XiaohongshuChunkOptions = {},
+): Promise<CommentsChunkResult> {
+  const args = [noteId];
+  if (xsecToken) args.push("--xsec_token", xsecToken);
+  if (options.sessionId) args.push("--session_id", options.sessionId);
+  if (options.sessionStateJson) args.push("--state_json", options.sessionStateJson);
+  if (options.resetSession) args.push("--reset", "1");
+  if ((options.commentContextWarmupMs ?? 0) > 0) {
+    args.push("--context_warmup_ms", String(options.commentContextWarmupMs));
+  }
+  if ((options.maxRequests ?? 0) > 0) {
+    args.push("--max_requests", String(options.maxRequests));
+  }
+  if (options.maxTopPages != null) {
+    args.push("--max_top_pages", String(options.maxTopPages));
+  }
+  if (options.maxReplyPages != null) {
+    args.push("--max_reply_pages", String(options.maxReplyPages));
+  }
+  if ((options.topLimit ?? 0) > 0) {
+    args.push("--top_limit", String(options.topLimit));
+  }
+  if ((options.replyLimit ?? 0) > 0) {
+    args.push("--reply_limit", String(options.replyLimit));
+  }
+  if ((options.intraChunkIdleMinMs ?? 0) > 0) {
+    args.push("--idle_min_ms", String(options.intraChunkIdleMinMs));
+  }
+  if ((options.intraChunkIdleMaxMs ?? 0) > 0) {
+    args.push("--idle_max_ms", String(options.intraChunkIdleMaxMs));
+  }
+  if ((options.heavyReplyThreshold ?? 0) > 0) {
+    args.push("--heavy_reply_threshold", String(options.heavyReplyThreshold));
+  }
+  return await runXiaohongshuSiteJson<CommentsChunkResult>("xiaohongshu/comments-chunk", args, options);
 }
